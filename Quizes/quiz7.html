@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lighting and Shading Quiz - Section 5</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .quiz-container {
+            max-width: 850px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            animation: slideIn 0.8s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .quiz-header {
+            background: linear-gradient(135deg, #ff7b00, #ffd700);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .quiz-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.3) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 60%, rgba(255,255,255,0.2) 0%, transparent 50%),
+                        radial-gradient(circle at 20% 80%, rgba(255,255,255,0.25) 0%, transparent 50%);
+            animation: lightRays 8s infinite ease-in-out;
+        }
+
+        @keyframes lightRays {
+            0%, 100% { opacity: 0.6; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.1); }
+        }
+
+        .quiz-header h1 {
+            font-size: 2.2em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 1;
+        }
+
+        .quiz-header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        .lighting-symbol {
+            display: inline-block;
+            font-weight: bold;
+            background: linear-gradient(45deg, #ffeb3b, #ffc107);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 1.2em;
+            animation: glow 3s infinite alternate;
+        }
+
+        @keyframes glow {
+            0% { filter: drop-shadow(0 0 5px rgba(255, 235, 59, 0.8)); }
+            100% { filter: drop-shadow(0 0 15px rgba(255, 235, 59, 1)); }
+        }
+
+        .quiz-content {
+            padding: 40px;
+        }
+
+        .question {
+            margin-bottom: 40px;
+            padding: 25px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+            opacity: 0;
+            animation: fadeInUp 0.6s ease-out forwards;
+        }
+
+        .question:nth-child(1) { animation-delay: 0.1s; }
+        .question:nth-child(2) { animation-delay: 0.2s; }
+        .question:nth-child(3) { animation-delay: 0.3s; }
+        .question:nth-child(4) { animation-delay: 0.4s; }
+        .question:nth-child(5) { animation-delay: 0.5s; }
+
+        @keyframes fadeInUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .question.answered {
+            border-color: #ff7b00;
+            background: #fff3e0;
+        }
+
+        .question-header {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .question-number {
+            background: linear-gradient(135deg, #ff7b00, #ffd700);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 15px;
+            font-size: 1.1em;
+            flex-shrink: 0;
+            box-shadow: 0 4px 8px rgba(255, 123, 0, 0.3);
+        }
+
+        .question-text {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #2c3e50;
+            line-height: 1.4;
+            flex-grow: 1;
+        }
+
+        .lighting-model {
+            background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+            border: 1px solid #ff7b00;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 0.95em;
+            color: #e65100;
+        }
+
+        .formula {
+            background: #263238;
+            color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 1em;
+            margin: 15px 0;
+            border-left: 4px solid #ff7b00;
+            text-align: center;
+        }
+
+        .color-info {
+            background: linear-gradient(90deg, #f8f9fa, #e9ecef);
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 0.95em;
+            text-align: center;
+            color: #495057;
+        }
+
+        .shader-highlight {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 15px 0;
+            font-size: 0.95em;
+            color: #2e7d32;
+        }
+
+        .options {
+            display: grid;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .option {
+            display: flex;
+            align-items: flex-start;
+            padding: 15px 20px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .option:hover {
+            border-color: #ff7b00;
+            background: #fff3e0;
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(255, 123, 0, 0.2);
+        }
+
+        .option input[type="radio"] {
+            margin-right: 15px;
+            margin-top: 3px;
+            transform: scale(1.3);
+            accent-color: #ff7b00;
+            flex-shrink: 0;
+        }
+
+        .option label {
+            cursor: pointer;
+            font-size: 1em;
+            line-height: 1.4;
+            color: #343a40;
+            flex-grow: 1;
+        }
+
+        .option.selected {
+            border-color: #ff7b00;
+            background: #ffcc80;
+        }
+
+        .submit-container {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #e9ecef;
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, #ff7b00, #ffd700);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(255, 123, 0, 0.3);
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 123, 0, 0.4);
+        }
+
+        .submit-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .results {
+            display: none;
+            text-align: center;
+            padding: 30px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            margin-top: 30px;
+            border-radius: 12px;
+        }
+
+        .results.show {
+            display: block;
+            animation: bounceIn 0.8s ease-out;
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .score {
+            font-size: 3em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .feedback {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+
+        .retry-btn {
+            background: white;
+            color: #28a745;
+            border: 2px solid white;
+            padding: 12px 30px;
+            font-size: 1em;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .retry-btn:hover {
+            background: transparent;
+            color: white;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff7b00, #ffd700);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 3px;
+        }
+
+        @media (max-width: 768px) {
+            .quiz-container {
+                margin: 10px;
+            }
+            
+            .quiz-content {
+                padding: 20px;
+            }
+            
+            .question {
+                padding: 20px;
+            }
+            
+            .quiz-header h1 {
+                font-size: 1.8em;
+            }
+
+            .question-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .question-number {
+                margin-bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="quiz-container">
+        <div class="quiz-header">
+            <h1><span class="lighting-symbol">Lighting & Shading</span> Quiz</h1>
+            <p>Section 5: Lighting and Shading Models</p>
+        </div>
+        
+        <div class="quiz-content">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+
+            <form id="quizForm">
+                <!-- Question 1 -->
+                <div class="question">
+                    <div class="question-header">
+                        <div class="question-number">1</div>
+                        <div class="question-text">
+                            What are the three primary types of photoreceptors in the human eye and how do they contribute to color vision?
+                        </div>
+                    </div>
+                    <div class="color-info">
+                        Human vision: 400-700 nanometer spectrum with rod and cone cells
+                    </div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" id="q1a" name="q1" value="a">
+                            <label for="q1a">Red cones, Blue cones, and Yellow cones that detect specific wavelengths</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q1b" name="q1" value="b">
+                            <label for="q1b">Rods for brightness detection and three types of cone cells for red, green, and blue wavelengths</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q1c" name="q1" value="c">
+                            <label for="q1c">Only cone cells that detect all colors equally</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q1d" name="q1" value="d">
+                            <label for="q1d">Rods, cones, and ganglion cells that process motion</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Question 2 -->
+                <div class="question">
+                    <div class="question-header">
+                        <div class="question-number">2</div>
+                        <div class="question-text">
+                            What is the mathematical formula for the Lambertian (diffuse) lighting model and what does each component represent?
+                        </div>
+                    </div>
+                    <div class="formula">
+                        Rc = Lc × Oc × (On · -Ln)
+                    </div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" id="q2a" name="q2" value="a">
+                            <label for="q2a">Rc = resulting intensity, Lc = light color, Oc = surface albedo, (On · -Ln) = dot product of surface normal and light direction</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q2b" name="q2" value="b">
+                            <label for="q2b">Rc = reflection coefficient, Lc = light distance, Oc = object color, (On · -Ln) = light attenuation</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q2c" name="q2" value="c">
+                            <label for="q2c">Rc = ray count, Lc = luminance, Oc = opacity, (On · -Ln) = normal mapping</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q2d" name="q2" value="d">
+                            <label for="q2d">This formula is used for specular reflection, not diffuse lighting</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Question 3 -->
+                <div class="question">
+                    <div class="question-header">
+                        <div class="question-number">3</div>
+                        <div class="question-text">
+                            What are the three components of the Phong lighting model and how do they contribute to realistic surface appearance?
+                        </div>
+                    </div>
+                    <div class="lighting-model">
+                        Phong Model = Ambient + Diffuse + Specular components
+                    </div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" id="q3a" name="q3" value="a">
+                            <label for="q3a">Red, Green, and Blue color channels for RGB rendering</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q3b" name="q3" value="b">
+                            <label for="q3b">Ambient (background illumination), Diffuse (matte surface reflection), and Specular (mirror-like highlights)</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q3c" name="q3" value="c">
+                            <label for="q3c">Primary, Secondary, and Tertiary light sources</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q3d" name="q3" value="d">
+                            <label for="q3d">Position, Normal, and Texture coordinate interpolation</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Question 4 -->
+                <div class="question">
+                    <div class="question-header">
+                        <div class="question-number">4</div>
+                        <div class="question-text">
+                            What is the key advantage of Physically Based Shading (PBS) over traditional lighting models in modern real-time graphics?
+                        </div>
+                    </div>
+                    <div class="shader-highlight">
+                        PBS simulates real-world light-material interactions based on physics principles
+                    </div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" id="q4a" name="q4" value="a">
+                            <label for="q4a">PBS renders faster than traditional lighting models</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q4b" name="q4" value="b">
+                            <label for="q4b">PBS simulates light-material interactions based on real-world physics, providing consistent and realistic results under different lighting conditions</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q4c" name="q4" value="c">
+                            <label for="q4c">PBS only works with metal materials, not dielectrics</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q4d" name="q4" value="d">
+                            <label for="q4d">PBS eliminates the need for textures in material definition</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Question 5 -->
+                <div class="question">
+                    <div class="question-header">
+                        <div class="question-number">5</div>
+                        <div class="question-text">
+                            What are shaders and how do they differ from the older fixed function pipeline in graphics rendering?
+                        </div>
+                    </div>
+                    <div class="shader-highlight">
+                        Modern GPUs use programmable shaders instead of fixed function operations
+                    </div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" id="q5a" name="q5" value="a">
+                            <label for="q5a">Shaders are textures that add color to 3D models</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q5b" name="q5" value="b">
+                            <label for="q5b">Shaders are small programs running on GPU that replace hard-coded lighting and texture mapping with customizable, programmable effects</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q5c" name="q5" value="c">
+                            <label for="q5c">Shaders are physical lighting devices used in 3D studios</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" id="q5d" name="q5" value="d">
+                            <label for="q5d">Shaders and fixed function pipeline serve the same purpose with no differences</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="submit-container">
+                    <button type="submit" class="submit-btn" id="submitBtn">Submit Quiz</button>
+                </div>
+            </form>
+
+            <div class="results" id="results">
+                <div class="score" id="scoreDisplay"></div>
+                <div class="feedback" id="feedbackText"></div>
+                <button class="retry-btn" onclick="resetQuiz()">Take Quiz Again</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const correctAnswers = {
+            q1: 'b', // Rods for brightness detection and three types of cone cells for red, green, and blue wavelengths
+            q2: 'a', // Rc = resulting intensity, Lc = light color, Oc = surface albedo, (On · -Ln) = dot product of surface normal and light direction
+            q3: 'b', // Ambient (background illumination), Diffuse (matte surface reflection), and Specular (mirror-like highlights)
+            q4: 'b', // PBS simulates light-material interactions based on real-world physics, providing consistent and realistic results under different lighting conditions
+            q5: 'b'  // Shaders are small programs running on GPU that replace hard-coded lighting and texture mapping with customizable, programmable effects
+        };
+
+        const questionCount = Object.keys(correctAnswers).length;
+
+        // Add event listeners for radio buttons
+        document.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                // Remove selected class from all options in this question
+                const questionDiv = this.closest('.question');
+                questionDiv.querySelectorAll('.option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                
+                // Add selected class to chosen option
+                this.closest('.option').classList.add('selected');
+                
+                // Mark question as answered
+                questionDiv.classList.add('answered');
+                
+                // Update progress
+                updateProgress();
+            });
+        });
+
+        function updateProgress() {
+            const answeredQuestions = document.querySelectorAll('.question.answered').length;
+            const progressPercent = (answeredQuestions / questionCount) * 100;
+            document.getElementById('progressFill').style.width = progressPercent + '%';
+            
+            // Enable submit button when all questions are answered
+            const submitBtn = document.getElementById('submitBtn');
+            if (answeredQuestions === questionCount) {
+                submitBtn.disabled = false;
+            }
+        }
+
+        // Handle form submission
+        document.getElementById('quizForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            let score = 0;
+            const formData = new FormData(this);
+            
+            // Calculate score
+            for (let [question, correctAnswer] of Object.entries(correctAnswers)) {
+                if (formData.get(question) === correctAnswer) {
+                    score++;
+                }
+            }
+            
+            // Display results
+            displayResults(score);
+        });
+
+        function displayResults(score) {
+            const percentage = Math.round((score / questionCount) * 100);
+            const resultsDiv = document.getElementById('results');
+            const scoreDisplay = document.getElementById('scoreDisplay');
+            const feedbackText = document.getElementById('feedbackText');
+            
+            scoreDisplay.textContent = `${score}/${questionCount}`;
+            
+            let feedback;
+            let resultsClass = 'show';
+            
+            if (percentage >= 90) {
+                feedback = "Brilliant! You've mastered lighting and shading fundamentals. Ready to create stunning visual effects and realistic materials!";
+                resultsDiv.style.background = "linear-gradient(135deg, #28a745, #20c997)";
+            } else if (percentage >= 70) {
+                feedback = "Great work! You understand lighting models well. Review PBS concepts and shader programming for complete mastery.";
+                resultsDiv.style.background = "linear-gradient(135deg, #ffc107, #fd7e14)";
+            } else if (percentage >= 50) {
+                feedback = "Good foundation! Focus on understanding the Phong model components and how PBS improves upon traditional methods.";
+                resultsDiv.style.background = "linear-gradient(135deg, #fd7e14, #dc3545)";
+            } else {
+                feedback = "Keep studying! Lighting and shading are crucial for realistic graphics. Review the mathematical formulas and physical principles.";
+                resultsDiv.style.background = "linear-gradient(135deg, #dc3545, #6f42c1)";
+            }
+            
+            feedbackText.textContent = feedback;
+            resultsDiv.classList.add(resultsClass);
+            
+            // Scroll to results
+            resultsDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function resetQuiz() {
+            // Reset form
+            document.getElementById('quizForm').reset();
+            
+            // Remove all selected and answered classes
+            document.querySelectorAll('.option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            
+            document.querySelectorAll('.question').forEach(question => {
+                question.classList.remove('answered');
+            });
+            
+            // Hide results
+            document.getElementById('results').classList.remove('show');
+            
+            // Reset progress
+            document.getElementById('progressFill').style.width = '0%';
+            
+            // Disable submit button
+            document.getElementById('submitBtn').disabled = true;
+            
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Initialize - disable submit button
+        document.getElementById('submitBtn').disabled = true;
+    </script>
+</body>
+</html>

@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR and Presence Quiz - MM806</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .quiz-container {
+            padding: 40px;
+        }
+
+        .question-container {
+            margin-bottom: 30px;
+            padding: 25px;
+            border: 2px solid #e5e7eb;
+            border-radius: 15px;
+            background: #f9fafb;
+            transition: all 0.3s ease;
+        }
+
+        .question-container:hover {
+            border-color: #4f46e5;
+            box-shadow: 0 5px 15px rgba(79, 70, 229, 0.1);
+        }
+
+        .question-number {
+            background: #4f46e5;
+            color: white;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .question-text {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #1f2937;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .option {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .option:hover {
+            border-color: #4f46e5;
+            background: #f0f4ff;
+        }
+
+        .option input[type="radio"] {
+            margin-right: 15px;
+            transform: scale(1.2);
+        }
+
+        .option label {
+            cursor: pointer;
+            flex: 1;
+            font-size: 1.1em;
+        }
+
+        .option.selected {
+            border-color: #4f46e5;
+            background: #f0f4ff;
+        }
+
+        .option.correct {
+            border-color: #10b981;
+            background: #ecfdf5;
+        }
+
+        .option.incorrect {
+            border-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .option.correct-answer {
+            border-color: #10b981;
+            background: #d1fae5;
+        }
+
+        .submit-container {
+            text-align: center;
+            margin: 40px 0;
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2em;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(79, 70, 229, 0.3);
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(79, 70, 229, 0.4);
+        }
+
+        .submit-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .results {
+            margin-top: 30px;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 1.2em;
+        }
+
+        .results.excellent {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+
+        .results.good {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+        }
+
+        .results.adequate {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+        }
+
+        .results.basic {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+        }
+
+        .results.poor {
+            background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+            color: white;
+        }
+
+        .explanation {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f3f4f6;
+            border-radius: 10px;
+            font-size: 0.95em;
+            color: #4b5563;
+            display: none;
+        }
+
+        .explanation.show {
+            display: block;
+        }
+
+        .reset-btn {
+            background: #6b7280;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1em;
+            border-radius: 25px;
+            cursor: pointer;
+            margin-left: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .reset-btn:hover {
+            background: #4b5563;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .quiz-container {
+                padding: 20px;
+            }
+            
+            .question-container {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Virtual Reality and Presence Quiz</h1>
+            <p>MM806 Fall 2024 - Lecture 1 Review</p>
+        </div>
+
+        <div class="quiz-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+
+            <form id="quizForm">
+                <!-- Question 1 -->
+                <div class="question-container">
+                    <div class="question-number">1</div>
+                    <div class="question-text">According to Burdea's 1993 definition, a virtual reality system is:</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q1" value="A" id="q1a">
+                            <label for="q1a">A) A computer system that creates realistic 3D graphics</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q1" value="B" id="q1b">
+                            <label for="q1b">B) An interface between human and machine capable of creating real-time sensory experiences through various human sensory channels</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q1" value="C" id="q1c">
+                            <label for="q1c">C) A gaming technology that uses head-mounted displays</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q1" value="D" id="q1d">
+                            <label for="q1d">D) A simulation system that replicates real-world environments exactly</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: B</strong><br>
+                        Burdea's definition emphasizes VR as a human-machine interface that creates real-time sensory experiences through multiple sensory channels (vision, audition, touch, smell, taste), not just visual graphics.
+                    </div>
+                </div>
+
+                <!-- Question 2 -->
+                <div class="question-container">
+                    <div class="question-number">2</div>
+                    <div class="question-text">The "Three I's" of Virtual Reality are:</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q2" value="A" id="q2a">
+                            <label for="q2a">A) Integration, Interaction, and Innovation</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q2" value="B" id="q2b">
+                            <label for="q2b">B) Immersion, Intelligence, and Implementation</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q2" value="C" id="q2c">
+                            <label for="q2c">C) Immersion, Interaction, and Imagination</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q2" value="D" id="q2d">
+                            <label for="q2d">D) Input, Integration, and Interface</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: C</strong><br>
+                        The Three I's are fundamental characteristics that effective VR systems must possess: Immersion (technical capability), Interaction (responsiveness), and Imagination (engaging content).
+                    </div>
+                </div>
+
+                <!-- Question 3 -->
+                <div class="question-container">
+                    <div class="question-number">3</div>
+                    <div class="question-text">What is the key difference between <strong>immersion</strong> and <strong>presence</strong>?</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q3" value="A" id="q3a">
+                            <label for="q3a">A) Immersion is psychological, presence is technical</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q3" value="B" id="q3b">
+                            <label for="q3b">B) Immersion refers to technical capabilities of the system, presence refers to the user's subjective psychological experience</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q3" value="C" id="q3c">
+                            <label for="q3c">C) There is no difference - they are the same concept</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q3" value="D" id="q3d">
+                            <label for="q3d">D) Immersion only applies to visual displays, presence includes all senses</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: B</strong><br>
+                        Immersion is objective and measurable (resolution, field of view, etc.), while presence is subjective - the psychological feeling of "being there" in the virtual environment.
+                    </div>
+                </div>
+
+                <!-- Question 4 -->
+                <div class="question-container">
+                    <div class="question-number">4</div>
+                    <div class="question-text">In the Reality-Virtuality Continuum, <strong>Augmented Reality (AR)</strong> is defined as:</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q4" value="A" id="q4a">
+                            <label for="q4a">A) Completely virtual environments with no real-world elements</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q4" value="B" id="q4b">
+                            <label for="q4b">B) Adding real elements to virtual worlds</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q4" value="C" id="q4c">
+                            <label for="q4c">C) Adding virtual objects to the real world while maintaining a sense of presence in the real world</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q4" value="D" id="q4d">
+                            <label for="q4d">D) A 50/50 mix of real and virtual elements</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: C</strong><br>
+                        AR augments the real world by overlaying virtual objects onto it, while the user maintains their sense of presence in the real environment (like Pokémon GO).
+                    </div>
+                </div>
+
+                <!-- Question 5 -->
+                <div class="question-container">
+                    <div class="question-number">5</div>
+                    <div class="question-text">What does "real-time" mean in the context of virtual reality?</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q5" value="A" id="q5a">
+                            <label for="q5a">A) The system processes data faster than human perception can detect</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q5" value="B" id="q5b">
+                            <label for="q5b">B) The system can detect user input and react fast enough that it appears instantaneous</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q5" value="C" id="q5c">
+                            <label for="q5c">C) The system operates at exactly 60 frames per second</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q5" value="D" id="q5d">
+                            <label for="q5d">D) The system uses live camera feeds from the real world</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: B</strong><br>
+                        Real-time in VR means the system responds fast enough to user input that it appears instantaneous, preventing breaks in presence due to noticeable latency.
+                    </div>
+                </div>
+
+                <!-- Question 6 -->
+                <div class="question-container">
+                    <div class="question-number">6</div>
+                    <div class="question-text">Which of the following factors is <strong>most likely to DECREASE</strong> presence in VR?</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q6" value="A" id="q6a">
+                            <label for="q6a">A) High-quality spatial audio</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q6" value="B" id="q6b">
+                            <label for="q6b">B) Wide field of view displays</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q6" value="C" id="q6c">
+                            <label for="q6c">C) High latency between head movement and visual update</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q6" value="D" id="q6d">
+                            <label for="q6d">D) Haptic feedback when touching virtual objects</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: C</strong><br>
+                        High latency creates a noticeable delay between user actions and system response, which breaks presence and can cause motion sickness. The other options all increase presence.
+                    </div>
+                </div>
+
+                <!-- Question 7 -->
+                <div class="question-container">
+                    <div class="question-number">7</div>
+                    <div class="question-text">According to research, what is true about virtual experiences and human responses?</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q7" value="A" id="q7a">
+                            <label for="q7a">A) People always know virtual experiences are fake, so they don't have real emotional responses</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q7" value="B" id="q7b">
+                            <label for="q7b">B) Virtual experiences can evoke the same reactions and emotions as real-world situations, even when the virtual environment is not perfectly realistic</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q7" value="C" id="q7c">
+                            <label for="q7c">C) Only photorealistic virtual environments can create genuine emotional responses</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q7" value="D" id="q7d">
+                            <label for="q7d">D) Virtual experiences only affect vision, not other psychological responses</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: B</strong><br>
+                        Research shows that virtual experiences can create real emotional and physiological responses, even with stylized graphics. This is why VR therapy works for treating phobias and PTSD.
+                    </div>
+                </div>
+
+                <!-- Question 8 -->
+                <div class="question-container">
+                    <div class="question-number">8</div>
+                    <div class="question-text">Sheridan's 1992 model identifies three measurable variables that determine presence. These are:</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q8" value="A" id="q8a">
+                            <label for="q8a">A) Visual quality, audio quality, and haptic feedback</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q8" value="B" id="q8b">
+                            <label for="q8b">B) Frame rate, resolution, and field of view</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q8" value="C" id="q8c">
+                            <label for="q8c">C) Extent of sensory information, control of sensors relative to environment, and ability to modify physical environment</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q8" value="D" id="q8d">
+                            <label for="q8d">D) Immersion, interaction, and imagination</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: C</strong><br>
+                        Sheridan's model focuses on three measurable physical variables: how much sensory information is provided, how well users can control their sensory perspective, and how much they can modify the environment.
+                    </div>
+                </div>
+
+                <!-- Question 9 -->
+                <div class="question-container">
+                    <div class="question-number">9</div>
+                    <div class="question-text">Which of the following is an example of "Virtualized Reality" as discussed in the lecture?</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q9" value="A" id="q9a">
+                            <label for="q9a">A) Playing a fantasy video game with dragons and magic</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q9" value="B" id="q9b">
+                            <label for="q9b">B) The F-35 pilot helmet that shows real camera feeds from around the aircraft</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q9" value="C" id="q9c">
+                            <label for="q9c">C) Using a VR headset to explore a completely fictional alien world</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q9" value="D" id="q9d">
+                            <label for="q9d">D) Watching a 3D movie in a theater</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: B</strong><br>
+                        Virtualized Reality uses real sensor data but presents it in enhanced ways. The F-35 helmet uses real camera feeds but processes and displays them to give pilots superhuman perception abilities.
+                    </div>
+                </div>
+
+                <!-- Question 10 -->
+                <div class="question-container">
+                    <div class="question-number">10</div>
+                    <div class="question-text">How can presence be measured in VR research? (Select the <strong>most complete</strong> answer)</div>
+                    <div class="options">
+                        <div class="option">
+                            <input type="radio" name="q10" value="A" id="q10a">
+                            <label for="q10a">A) Only through subjective questionnaires asking users about their experience</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q10" value="B" id="q10b">
+                            <label for="q10b">B) Only through objective physiological measures like heart rate and brain activity</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q10" value="C" id="q10c">
+                            <label for="q10c">C) Only through behavioral observations like whether people duck when virtual objects approach them</label>
+                        </div>
+                        <div class="option">
+                            <input type="radio" name="q10" value="D" id="q10d">
+                            <label for="q10d">D) Through a combination of subjective measures (questionnaires), psychophysical measures (relating technical parameters to subjective ratings), and objective measures (physiological and behavioral responses)</label>
+                        </div>
+                    </div>
+                    <div class="explanation">
+                        <strong>Correct Answer: D</strong><br>
+                        Presence research uses multiple complementary approaches: subjective questionnaires, psychophysical studies relating technical factors to presence ratings, and objective measures like physiological responses and behavioral observations.
+                    </div>
+                </div>
+
+                <div class="submit-container">
+                    <button type="submit" class="submit-btn" id="submitBtn">Submit Quiz</button>
+                    <button type="button" class="reset-btn" id="resetBtn" style="display: none;">Reset Quiz</button>
+                </div>
+            </form>
+
+            <div id="results" class="results" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const correctAnswers = {
+            q1: 'B', q2: 'C', q3: 'B', q4: 'C', q5: 'B',
+            q6: 'C', q7: 'B', q8: 'C', q9: 'B', q10: 'D'
+        };
+
+        const form = document.getElementById('quizForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const results = document.getElementById('results');
+        const progressFill = document.getElementById('progressFill');
+
+        // Add event listeners to radio buttons for visual feedback
+        document.querySelectorAll('input[type="radio"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                // Remove selected class from all options in this question
+                const questionContainer = this.closest('.question-container');
+                questionContainer.querySelectorAll('.option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                // Add selected class to chosen option
+                this.closest('.option').classList.add('selected');
+                
+                updateProgress();
+            });
+        });
+
+        function updateProgress() {
+            const totalQuestions = Object.keys(correctAnswers).length;
+            const answeredQuestions = document.querySelectorAll('input[type="radio"]:checked').length;
+            const progress = (answeredQuestions / totalQuestions) * 100;
+            progressFill.style.width = progress + '%';
+        }
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            let score = 0;
+            const totalQuestions = Object.keys(correctAnswers).length;
+            
+            // Check each answer
+            for (let question in correctAnswers) {
+                const selectedAnswer = document.querySelector(`input[name="${question}"]:checked`);
+                const questionContainer = document.querySelector(`input[name="${question}"]`).closest('.question-container');
+                const options = questionContainer.querySelectorAll('.option');
+                const explanation = questionContainer.querySelector('.explanation');
+                
+                if (selectedAnswer) {
+                    if (selectedAnswer.value === correctAnswers[question]) {
+                        score++;
+                        selectedAnswer.closest('.option').classList.add('correct');
+                    } else {
+                        selectedAnswer.closest('.option').classList.add('incorrect');
+                    }
+                }
+                
+                // Show correct answer
+                options.forEach(option => {
+                    const input = option.querySelector('input');
+                    if (input.value === correctAnswers[question]) {
+                        option.classList.add('correct-answer');
+                    }
+                });
+                
+                // Show explanation
+                explanation.classList.add('show');
+            }
+            
+            // Calculate percentage and show results
+            const percentage = Math.round((score / totalQuestions) * 100);
+            showResults(score, totalQuestions, percentage);
+            
+            // Disable form and show reset button
+            submitBtn.style.display = 'none';
+            resetBtn.style.display = 'inline-block';
+            
+            // Disable all radio buttons
+            document.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.disabled = true;
+            });
+            
+            // Scroll to results
+            results.scrollIntoView({ behavior: 'smooth' });
+        });
+
+        function showResults(score, total, percentage) {
+            let resultClass, resultText, advice;
+            
+            if (percentage >= 90) {
+                resultClass = 'excellent';
+                resultText = 'Excellent! 🎉';
+                advice = 'You have an excellent understanding of VR and presence concepts. You\'re well-prepared for the next lecture!';
+            } else if (percentage >= 80) {
+                resultClass = 'good';
+                resultText = 'Good Work! 👍';
+                advice = 'You have a good grasp of the material with minor gaps. Review the explanations for questions you missed.';
+            } else if (percentage >= 70) {
+                resultClass = 'adequate';
+                resultText = 'Adequate ⚠️';
+                advice = 'You have adequate understanding but should review key concepts. Focus on the distinctions between technical and psychological aspects of VR.';
+            } else if (percentage >= 60) {
+                resultClass = 'basic';
+                resultText = 'Needs Review 📚';
+                advice = 'You have basic understanding but need significant review. Re-read the lecture materials and attend the review session.';
+            } else {
+                resultClass = 'poor';
+                resultText = 'Requires Study 📖';
+                advice = 'You should thoroughly re-study the lecture materials and attend the review session. Focus on understanding relationships between concepts.';
+            }
+            
+            results.className = `results ${resultClass}`;
+            results.innerHTML = `
+                <h2>${resultText}</h2>
+                <p><strong>Your Score: ${score}/${total} (${percentage}%)</strong></p>
+                <p>${advice}</p>
+            `;
+            results.style.display = 'block';
+        }
+
+        resetBtn.addEventListener('click', function() {
+            // Reset form
+            form.reset();
+            
+            // Remove all styling classes
+            document.querySelectorAll('.option').forEach(option => {
+                option.classList.remove('selected', 'correct', 'incorrect', 'correct-answer');
+            });
+            
+            // Hide explanations
+            document.querySelectorAll('.explanation').forEach(explanation => {
+                explanation.classList.remove('show');
+            });
+            
+            // Hide results
+            results.style.display = 'none';
+            
+            // Reset buttons
+            submitBtn.style.display = 'inline-block';
+            resetBtn.style.display = 'none';
+            
+            // Enable radio buttons
+            document.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.disabled = false;
+            });
+            
+            // Reset progress
+            progressFill.style.width = '0%';
+            
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    </script>
+</body>
+</htm
