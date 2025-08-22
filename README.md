@@ -2,7 +2,7 @@ Introduction to Virtual/Augmented Reality and Telepresence
 
 MM-806 (Fall 2025)
 
-University of Alberta - Department of Computing Scienc
+University of Alberta - Department of Computing Science
 
 Virtual reality and augmented reality can provide an immersive environment where many scenarios can be simulated with remarkable fidelity. These technologies have revolutionized numerous fields including manufacturing and engineering tasks, medical planning and training, art and design, rehabilitation, Physics, Biology and Chemistry concept exploration, gaming, education, and countless other applications that benefit from immersive virtual environments.
 
