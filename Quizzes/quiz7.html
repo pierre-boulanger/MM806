@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Haptics and Touch Perception Quiz</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .quiz-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .quiz-header {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .quiz-header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .quiz-header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .quiz-content {
+            padding: 40px;
+        }
+
+        .question-container {
+            display: none;
+            animation: slideIn 0.5s ease-in-out;
+        }
+
+        .question-container.active {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .question-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .question-number {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .score {
+            font-weight: bold;
+            color: #f5576c;
+            font-size: 1.1em;
+        }
+
+        .question {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 30px;
+            line-height: 1.4;
+        }
+
+        .options {
+            display: grid;
+            gap: 15px;
+        }
+
+        .option {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1.1em;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .option:hover {
+            background: #ffe0f0;
+            border-color: #f093fb;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(240, 147, 251, 0.2);
+        }
+
+        .option.selected {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border-color: #f093fb;
+            transform: translateY(-2px);
+        }
+
+        .option.correct {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            color: white;
+            border-color: #4caf50;
+        }
+
+        .option.incorrect {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+            border-color: #f44336;
+        }
+
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        .nav-button {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3);
+        }
+
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(240, 147, 251, 0.4);
+        }
+
+        .nav-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .results {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .results.active {
+            display: block;
+            animation: slideIn 0.5s ease-in-out;
+        }
+
+        .results h2 {
+            font-size: 2.5em;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .final-score {
+            font-size: 3em;
+            font-weight: bold;
+            color: #f093fb;
+            margin: 30px 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .score-message {
+            font-size: 1.3em;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .restart-button {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            border-radius: 25px;
+            font-size: 1.2em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3);
+        }
+
+        .restart-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(240, 147, 251, 0.4);
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .progress {
+            height: 100%;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        @media (max-width: 768px) {
+            .quiz-content {
+                padding: 20px;
+            }
+            
+            .quiz-header h1 {
+                font-size: 2em;
+            }
+            
+            .question {
+                font-size: 1.1em;
+            }
+            
+            .option {
+                padding: 15px;
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="quiz-container">
+        <div class="quiz-header">
+            <h1>VR Haptics and Touch Perception Quiz</h1>
+            <p>Test your knowledge of haptic interfaces and somatosensory systems</p>
+        </div>
+
+        <div class="quiz-content">
+            <div class="student-info" id="studentInfo">
+                <h2 style="text-align: center; color: #333; margin-bottom: 30px;">Student Information</h2>
+                <div style="max-width: 400px; margin: 0 auto;">
+                    <div style="margin-bottom: 20px;">
+                        <label for="studentName" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Full Name:</label>
+                        <input type="text" id="studentName" placeholder="Enter your full name" 
+                               style="width: 100%; padding: 15px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 1.1em; transition: border-color 0.3s ease;">
+                    </div>
+                    <div style="margin-bottom: 30px;">
+                        <label for="studentId" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Student ID:</label>
+                        <input type="text" id="studentId" placeholder="Enter your student ID" 
+                               style="width: 100%; padding: 15px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 1.1em; transition: border-color 0.3s ease;">
+                    </div>
+                    <button onclick="startQuiz()" id="startBtn" class="nav-button" style="width: 100%; margin: 0;" disabled>Start Quiz</button>
+                </div>
+            </div>
+
+            <div class="quiz-questions" id="quizQuestions" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress" id="progress"></div>
+                </div>
+
+            <div class="question-container active" data-question="1">
+                <div class="question-header">
+                    <div class="question-number">Question 1 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">What does the term "haptic" derive from, and what does it mean?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">Latin "haptere" meaning "to hold"</div>
+                    <div class="option" data-answer="true">Greek "haptikos" meaning "able to touch or grasp"</div>
+                    <div class="option" data-answer="false">Sanskrit "hapta" meaning "sensation"</div>
+                    <div class="option" data-answer="false">French "haptique" meaning "feeling"</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="2">
+                <div class="question-header">
+                    <div class="question-number">Question 2 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">What update rate is required for haptic rendering to maintain stability and provide convincing force feedback?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">60 Hz</div>
+                    <div class="option" data-answer="false">500 Hz</div>
+                    <div class="option" data-answer="true">1000 Hz or higher</div>
+                    <div class="option" data-answer="false">120 Hz</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="3">
+                <div class="question-header">
+                    <div class="question-number">Question 3 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">Which mechanoreceptor type is responsible for detecting high-frequency vibrations (100-400 Hz)?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">Meissner's corpuscles</div>
+                    <div class="option" data-answer="true">Pacinian corpuscles</div>
+                    <div class="option" data-answer="false">Merkel cells</div>
+                    <div class="option" data-answer="false">Ruffini endings</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="4">
+                <div class="question-header">
+                    <div class="question-number">Question 4 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">What are the two main components of the somatosensory system?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">Vision and Touch</div>
+                    <div class="option" data-answer="true">Haptic Perception and Proprioception (Kinesthesia)</div>
+                    <div class="option" data-answer="false">Temperature and Pain</div>
+                    <div class="option" data-answer="false">Pressure and Movement</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="5">
+                <div class="question-header">
+                    <div class="question-number">Question 5 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">Which mechanoreceptor has small receptive fields and slow adaptation, providing sustained pressure feedback?</div>
+                <div class="options">
+                    <div class="option" data-answer="true">Merkel's disks</div>
+                    <div class="option" data-answer="false">Pacinian corpuscles</div>
+                    <div class="option" data-answer="false">Meissner's corpuscles</div>
+                    <div class="option" data-answer="false">Ruffini endings</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="6">
+                <div class="question-header">
+                    <div class="question-number">Question 6 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">In the Heller 1986 study on Braille identification, what was the correct identification rate when observers actively moved their fingers?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">30.1%</div>
+                    <div class="option" data-answer="true">47.1%</div>
+                    <div class="option" data-answer="false">9.4%</div>
+                    <div class="option" data-answer="false">60.0%</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="7">
+                <div class="question-header">
+                    <div class="question-number">Question 7 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">What are the two types of muscle proprioceptors?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">Pacinian and Meissner corpuscles</div>
+                    <div class="option" data-answer="true">Muscle spindles and Golgi tendon organs</div>
+                    <div class="option" data-answer="false">Merkel cells and Ruffini endings</div>
+                    <div class="option" data-answer="false">Hair follicle receptors and nociceptors</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="8">
+                <div class="question-header">
+                    <div class="question-number">Question 8 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">What is the smallest detectable change in joint angle (difference threshold) at the shoulder?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">2.5 degrees</div>
+                    <div class="option" data-answer="false">4.4 degrees</div>
+                    <div class="option" data-answer="true">0.8 degrees</div>
+                    <div class="option" data-answer="false">6.8 degrees</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="9">
+                <div class="question-header">
+                    <div class="question-number">Question 9 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">What is a haptic interface?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">A visual display system for VR</div>
+                    <div class="option" data-answer="true">A force-reflecting device allowing users to touch and manipulate virtual objects</div>
+                    <div class="option" data-answer="false">An audio feedback system</div>
+                    <div class="option" data-answer="false">A motion tracking system</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="10">
+                <div class="question-header">
+                    <div class="question-number">Question 10 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">What technology does the HaptX glove use to provide tactile feedback?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">Electromagnetic actuators</div>
+                    <div class="option" data-answer="true">Microfluidic pneumatic actuators (130 per glove)</div>
+                    <div class="option" data-answer="false">Piezoelectric crystals</div>
+                    <div class="option" data-answer="false">Vibrotactile motors</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="11">
+                <div class="question-header">
+                    <div class="question-number">Question 11 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">What is the maximum force that the CyberGrasp exoskeleton can apply to each finger?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">5 Newtons</div>
+                    <div class="option" data-answer="true">10 Newtons</div>
+                    <div class="option" data-answer="false">20 Newtons</div>
+                    <div class="option" data-answer="false">80 Newtons</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="12">
+                <div class="question-header">
+                    <div class="question-number">Question 12 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">In haptic rendering, what is the "god object" or "proxy" approach?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">A method for creating 3D visual models</div>
+                    <div class="option" data-answer="true">A technique where the virtual object position is constrained while the device position penetrates, creating spring forces</div>
+                    <div class="option" data-answer="false">A collision detection algorithm</div>
+                    <div class="option" data-answer="false">A texture rendering method</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="13">
+                <div class="question-header">
+                    <div class="question-number">Question 13 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">What device uses the Peltier effect to provide thermal haptic feedback?</div>
+                <div class="options">
+                    <div class="option" data-answer="true">Thermoelectric coolers in thermal displays</div>
+                    <div class="option" data-answer="false">Vibrotactile actuators</div>
+                    <div class="option" data-answer="false">Pneumatic systems</div>
+                    <div class="option" data-answer="false">Ultrasonic transducers</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="14">
+                <div class="question-header">
+                    <div class="question-number">Question 14 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">Which haptic API is truly open source and supports multiple hardware manufacturers including Force Dimension, Sensable, and FCS Robotics?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">OpenHaptics SDK</div>
+                    <div class="option" data-answer="false">HaptX API</div>
+                    <div class="option" data-answer="true">CHAI3D</div>
+                    <div class="option" data-answer="false">QuaRC</div>
+                </div>
+            </div>
+
+            <div class="question-container" data-question="15">
+                <div class="question-header">
+                    <div class="question-number">Question 15 of 15</div>
+                    <div class="score">Score: <span id="score">0</span>/15</div>
+                </div>
+                <div class="question">In the 2016 kinesthetic master-slave system study for laparoscopic tasks, what advantages did the kinesthetic-guided group show over the self-directed group?</div>
+                <div class="options">
+                    <div class="option" data-answer="false">Faster completion times only</div>
+                    <div class="option" data-answer="true">Fewer ring drops, decreased error count, and reduced error duration</div>
+                    <div class="option" data-answer="false">Better visual recognition only</div>
+                    <div class="option" data-answer="false">No significant differences</div>
+                </div>
+            </div>
+
+                <div class="navigation">
+                    <button class="nav-button" id="prevBtn" onclick="changeQuestion(-1)" disabled>Previous</button>
+                    <button class="nav-button" id="nextBtn" onclick="changeQuestion(1)">Next</button>
+                </div>
+            </div>
+
+            <div class="results" id="results">
+                <h2>Quiz Complete!</h2>
+                <div class="final-score" id="finalScore">0/15</div>
+                <div class="score-message" id="scoreMessage"></div>
+                <div id="emailStatus" style="margin: 20px 0; padding: 15px; border-radius: 8px; display: none;"></div>
+                <button class="restart-button" onclick="restartQuiz()">Take Quiz Again</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentQuestion = 1;
+        let score = 0;
+        let answers = {};
+        let studentName = '';
+        let studentId = '';
+        const totalQuestions = 15;
+
+        const questions = [
+            "What does the term \"haptic\" derive from, and what does it mean?",
+            "What update rate is required for haptic rendering to maintain stability and provide convincing force feedback?",
+            "Which mechanoreceptor type is responsible for detecting high-frequency vibrations (100-400 Hz)?",
+            "What are the two main components of the somatosensory system?",
+            "Which mechanoreceptor has small receptive fields and slow adaptation, providing sustained pressure feedback?",
+            "In the Heller 1986 study on Braille identification, what was the correct identification rate when observers actively moved their fingers?",
+            "What are the two types of muscle proprioceptors?",
+            "What is the smallest detectable change in joint angle (difference threshold) at the shoulder?",
+            "What is a haptic interface?",
+            "What technology does the HaptX glove use to provide tactile feedback?",
+            "What is the maximum force that the CyberGrasp exoskeleton can apply to each finger?",
+            "In haptic rendering, what is the \"god object\" or \"proxy\" approach?",
+            "What device uses the Peltier effect to provide thermal haptic feedback?",
+            "Which haptic API is truly open source and supports multiple hardware manufacturers including Force Dimension, Sensable, and FCS Robotics?",
+            "In the 2016 kinesthetic master-slave system study for laparoscopic tasks, what advantages did the kinesthetic-guided group show over the self-directed group?"
+        ];
+
+        const correctAnswers = [
+            "Greek \"haptikos\" meaning \"able to touch or grasp\"",
+            "1000 Hz or higher",
+            "Pacinian corpuscles",
+            "Haptic Perception and Proprioception (Kinesthesia)",
+            "Merkel's disks",
+            "47.1%",
+            "Muscle spindles and Golgi tendon organs",
+            "0.8 degrees",
+            "A force-reflecting device allowing users to touch and manipulate virtual objects",
+            "Microfluidic pneumatic actuators (130 per glove)",
+            "10 Newtons",
+            "A technique where the virtual object position is constrained while the device position penetrates, creating spring forces",
+            "Thermoelectric coolers in thermal displays",
+            "CHAI3D",
+            "Fewer ring drops, decreased error count, and reduced error duration"
+        ];
+
+        document.getElementById('studentName').addEventListener('input', validateStudentInfo);
+        document.getElementById('studentId').addEventListener('input', validateStudentInfo);
+
+        function validateStudentInfo() {
+            const name = document.getElementById('studentName').value.trim();
+            const id = document.getElementById('studentId').value.trim();
+            document.getElementById('startBtn').disabled = !name || !id;
+        }
+
+        function startQuiz() {
+            studentName = document.getElementById('studentName').value.trim();
+            studentId = document.getElementById('studentId').value.trim();
+            
+            if (!studentName || !studentId) {
+                alert('Please enter both your name and student ID to start the quiz.');
+                return;
+            }
+            
+            document.getElementById('studentInfo').style.display = 'none';
+            document.getElementById('quizQuestions').style.display = 'block';
+            updateProgress();
+            updateScore();
+        }
+
+        function updateProgress() {
+            const progress = (currentQuestion - 1) / totalQuestions * 100;
+            document.getElementById('progress').style.width = progress + '%';
+        }
+
+        function updateScore() {
+            const scoreElements = document.querySelectorAll('#score');
+            scoreElements.forEach(el => el.textContent = score);
+        }
+
+        function selectOption(optionElement) {
+            const questionContainer = document.querySelector('.question-container.active');
+            const options = questionContainer.querySelectorAll('.option');
+            
+            options.forEach(opt => opt.classList.remove('selected'));
+            optionElement.classList.add('selected');
+            answers[currentQuestion] = optionElement.dataset.answer === 'true';
+            document.getElementById('nextBtn').disabled = false;
+        }
+
+        function changeQuestion(direction) {
+            if (direction === 1 && currentQuestion < totalQuestions) {
+                currentQuestion++;
+            } else if (direction === -1 && currentQuestion > 1) {
+                currentQuestion--;
+            } else if (direction === 1 && currentQuestion === totalQuestions) {
+                showResults();
+                return;
+            }
+
+            document.querySelectorAll('.question-container').forEach(q => q.classList.remove('active'));
+            document.querySelector(`[data-question="${currentQuestion}"]`).classList.add('active');
+            
+            document.getElementById('prevBtn').disabled = currentQuestion === 1;
+            document.getElementById('nextBtn').textContent = currentQuestion === totalQuestions ? 'Finish' : 'Next';
+            document.getElementById('nextBtn').disabled = !answers[currentQuestion];
+            
+            updateProgress();
+        }
+
+        function showResults() {
+            score = Object.values(answers).filter(answer => answer).length;
+            
+            document.getElementById('quizQuestions').style.display = 'none';
+            document.getElementById('results').classList.add('active');
+            
+            document.getElementById('finalScore').textContent = `${score}/${totalQuestions}`;
+            
+            const percentage = (score / totalQuestions) * 100;
+            let message;
+            
+            if (percentage >= 90) {
+                message = "Outstanding! You have excellent knowledge of VR Haptics and Touch Perception!";
+            } else if (percentage >= 80) {
+                message = "Excellent work! You understand haptic systems very well!";
+            } else if (percentage >= 70) {
+                message = "Good job! You have solid knowledge of haptic technology!";
+            } else if (percentage >= 60) {
+                message = "Not bad! You might want to review some haptic concepts!";
+            } else {
+                message = "Keep studying! Haptic technology is fascinating and important!";
+            }
+            
+            document.getElementById('scoreMessage').textContent = message;
+            sendResultsEmail();
+        }
+
+        function sendResultsEmail() {
+            const emailStatus = document.getElementById('emailStatus');
+            emailStatus.style.display = 'block';
+            emailStatus.style.background = '#e3f2fd';
+            emailStatus.style.color = '#1976d2';
+            emailStatus.textContent = 'Preparing results for download...';
+
+            const studentAnswers = [];
+            for (let i = 1; i <= totalQuestions; i++) {
+                const questionContainer = document.querySelector(`[data-question="${i}"]`);
+                const selectedOption = questionContainer.querySelector('.option.selected');
+                if (selectedOption) {
+                    studentAnswers.push(selectedOption.textContent.trim());
+                } else {
+                    studentAnswers.push('No answer selected');
+                }
+            }
+
+            let detailedResults = '';
+            for (let i = 0; i < totalQuestions; i++) {
+                detailedResults += `Question ${i + 1}: ${questions[i]}\n`;
+                detailedResults += `Student Answer: ${studentAnswers[i]}\n`;
+                detailedResults += `Correct Answer: ${correctAnswers[i]}\n`;
+                detailedResults += `Result: ${answers[i + 1] ? '✓ Correct' : '✗ Incorrect'}\n\n`;
+            }
+
+            const results = {
+                studentName: studentName,
+                studentId: studentId,
+                date: new Date().toLocaleDateString(),
+                time: new Date().toLocaleTimeString(),
+                score: score,
+                totalQuestions: totalQuestions,
+                percentage: Math.round((score/totalQuestions)*100),
+                detailedResults: detailedResults
+            };
+
+            const resultText = `VR Haptics and Touch Perception Quiz Results
+            
+Student Name: ${results.studentName}
+Student ID: ${results.studentId}
+Date: ${results.date}
+Time: ${results.time}
+Final Score: ${results.score}/${results.totalQuestions} (${results.percentage}%)
+
+Detailed Answers:
+==================
+
+${results.detailedResults}`;
+
+            const blob = new Blob([resultText], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `VR_Haptics_Quiz_${results.studentName}_${results.studentId}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            emailStatus.style.background = '#e8f5e8';
+            emailStatus.style.color = '#2e7d32';
+            emailStatus.innerHTML = `
+                ✓ Results file downloaded successfully!<br>
+                <strong>Next Steps:</strong><br>
+                1. Check your Downloads folder for the results file<br>
+                2. Email the downloaded file to: <strong>VRARMM806.2025@gmail.com</strong><br>
+                3. Use subject: "VR Haptics Quiz Results - ${studentName} (${studentId})"
+            `;
+        }
+
+        function restartQuiz() {
+            currentQuestion = 1;
+            score = 0;
+            answers = {};
+            
+            document.getElementById('studentInfo').style.display = 'block';
+            document.getElementById('quizQuestions').style.display = 'none';
+            document.getElementById('results').classList.remove('active');
+            
+            document.getElementById('studentName').value = '';
+            document.getElementById('studentId').value = '';
+            document.getElementById('startBtn').disabled = true;
+            
+            document.querySelectorAll('.question-container').forEach(q => q.classList.remove('active'));
+            document.querySelector('[data-question="1"]').classList.add('active');
+            
+            document.querySelectorAll('.option').forEach(opt => {
+                opt.classList.remove('selected', 'correct', 'incorrect');
+            });
+            
+            document.getElementById('prevBtn').disabled = true;
+            document.getElementById('nextBtn').disabled = true;
+            document.getElementById('nextBtn').textContent = 'Next';
+            
+            document.getElementById('emailStatus').style.display = 'none';
+            
+            updateProgress();
+            updateScore();
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.option').forEach(option => {
+                option.addEventListener('click', function() {
+                    selectOption(this);
+                });
+            });
+            
+            const inputs = document.querySelectorAll('input[type="text"]');
+            inputs.forEach(input => {
+                input.addEventListener('focus', function() {
+                    this.style.borderColor = '#f093fb';
+                    this.style.boxShadow = '0 0 0 3px rgba(240, 147, 251, 0.1)';
+                });
+                
+                input.addEventListener('blur', function() {
+                    this.style.borderColor = '#e9ecef';
+                    this.style.boxShadow = 'none';
+                });
+            });
+        });
+    </script>
+</body>
+</html>
