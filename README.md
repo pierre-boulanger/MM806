@@ -1,6 +1,6 @@
 Introduction to Virtual/Augmented Reality and Telepresence
 
-MM-806 (Fall 2025)
+MM-806 (Fall 2026)
 
 University of Alberta - Department of Computing Science
 
