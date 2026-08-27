@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>The OpenGL Pipeline — MM-806</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121722; --panel-2:#161d2b;
+    --line:#222c3e; --line-soft:#1a2334;
+    --ink:#e9eef7; --muted:#8a99b5; --faint:#5d6c87;
+    --vtx:#8b7bff; --xform:#4d8cff; --clip:#36cfd0; --raster:#5fd17a; --frag:#f2b441; --out:#e36a99;
+    --prog:#f2b441; --red:#ff5a5a;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1100px 620px at 82% -10%, #18223a 0%, transparent 60%),var(--bg);
+    color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5}
+  .wrap{max-width:1300px;margin:0 auto;padding:26px 22px 56px}
+  header.mast{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:18px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--clip)}
+  h1{font-size:clamp(23px,3vw,33px);margin:6px 0 0;font-weight:650;letter-spacing:-.01em}
+  h1 .g{background:linear-gradient(90deg,var(--vtx),var(--clip),var(--frag),var(--out));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--muted);font-size:14px;max-width:56ch}
+  .mast .meta{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em;text-align:right;line-height:1.8}
+  .mast .meta b{color:var(--prog)}
+  .rail{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:8px 2px 14px;margin-bottom:6px}
+  .node{flex:0 0 auto;position:relative;display:flex;flex-direction:column;justify-content:flex-start;
+    width:104px;padding:10px 9px;border:1px solid var(--line);border-radius:9px;background:var(--panel);
+    color:var(--ink);font-family:var(--sans);text-align:left;
+    cursor:pointer;transition:.15s;margin-right:18px}
+  .node:last-child{margin-right:0}
+  .node:after{content:"";position:absolute;right:-18px;top:50%;width:18px;height:2px;background:var(--line)}
+  .node:last-child:after{display:none}
+  .node .ix{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.1em}
+  .node .nm{font-size:11.5px;font-weight:600;margin-top:3px;line-height:1.25}
+  .node .kd{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-top:6px}
+  .node .top{position:absolute;left:0;right:0;top:0;height:3px;border-radius:9px 9px 0 0;background:var(--accent)}
+  .node[data-prog="1"] .kd{color:var(--prog)}
+  .node[data-opt="1"]{border-style:dashed;opacity:.78}
+  .node[aria-current="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 0 22px -6px var(--accent);background:var(--panel-2);opacity:1}
+  .node:focus-visible{outline:2px solid var(--clip);outline-offset:2px}
+  .raillegend{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:18px;letter-spacing:.04em}
+  .raillegend i{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin-right:6px}
+  .grid{display:grid;grid-template-columns:1.05fr .95fr;gap:20px}
+  @media (max-width:940px){.grid{grid-template-columns:1fr}}
+  .stage{background:linear-gradient(180deg,#0d1420,#0b101a);border:1px solid var(--line);border-radius:12px;padding:14px}
+  canvas{display:block;width:100%;height:auto;border-radius:8px;background:#080c13}
+  .cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:10px 2px 0}
+  .controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .btn{appearance:none;font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink);
+    background:#0b1320;border:1px solid var(--line);border-radius:7px;padding:8px 12px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--clip);color:#fff}
+  .btn:focus-visible{outline:2px solid var(--clip);outline-offset:2px}
+  .btn.primary{border-color:#33425c}
+  .spacer{flex:1}
+  .chip{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);background:#0b1320;border:1px solid var(--line);border-radius:7px;padding:7px 9px;cursor:pointer;font-family:var(--mono)}
+  .chip input{accent-color:var(--raster)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .badge{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    padding:4px 9px;border-radius:20px;border:1px solid var(--line)}
+  .badge.prog{color:var(--prog);border-color:#5a4a22} .badge.fixed{color:var(--muted)} .badge.opt{color:var(--clip);border-color:#1f4a4d}
+  .panel h2{font-size:20px;margin:12px 0 2px;letter-spacing:-.01em}
+  .panel h2 .num{font-family:var(--mono);font-size:15px;color:var(--faint);margin-right:8px}
+  .panel .desc{font-size:14px;color:var(--muted);margin:10px 0 4px}
+  .panel .desc b{color:var(--ink)}
+  .data{font-family:var(--mono);font-size:12.5px;background:#0b1320;border:1px solid var(--line-soft);border-radius:9px;
+    padding:12px 13px;margin-top:14px;white-space:pre;overflow-x:auto;line-height:1.65;color:#cdd8ec}
+  .data .c{color:var(--clip)} .data .a{color:var(--frag)} .data .m{color:var(--faint)} .data .r{color:var(--red)} .data .g{color:var(--raster)}
+  details{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  summary{cursor:pointer;font-size:12.5px;color:var(--clip);font-family:var(--mono);letter-spacing:.04em;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary:before{content:"▸ ";color:var(--faint)} details[open] summary:before{content:"▾ "}
+  details p{font-size:13px;color:var(--muted);margin:10px 0 0}
+  footer{margin-top:24px;border-top:1px solid var(--line);padding-top:14px;font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div>
+      <div class="eyebrow">MM-806 · rendering chapter companion</div>
+      <h1>The <span class="g">OpenGL Pipeline</span></h1>
+      <p class="sub">Four triangles enter: they overlap, they sit at different depths, and one
+      pokes outside the view frustum. Follow them from buffer to pixels — click any stage, or step through.</p>
+    </div>
+    <div class="meta"><b>●</b> programmable<br/>○ fixed-function<br/>⋯ optional</div>
+  </header>
+
+  <div class="rail" id="rail" role="tablist" aria-label="Pipeline stages"></div>
+  <div class="raillegend">
+    <span><i style="background:var(--vtx)"></i>geometry in</span>
+    <span><i style="background:var(--xform)"></i>transform</span>
+    <span><i style="background:var(--clip)"></i>screen mapping</span>
+    <span><i style="background:var(--raster)"></i>rasterize</span>
+    <span><i style="background:var(--frag)"></i>shade</span>
+    <span><i style="background:var(--out)"></i>output</span>
+  </div>
+
+  <div class="grid">
+    <div class="stage">
+      <canvas id="cv" width="680" height="470"></canvas>
+      <div class="cap" id="cap">stage view</div>
+      <div class="controls">
+        <button class="btn" id="prev">◀ Prev</button>
+        <button class="btn primary" id="play">▶ Play</button>
+        <button class="btn" id="next">Next ▶</button>
+        <span class="spacer"></span>
+        <label class="chip"><input type="checkbox" id="tCull"/> cull</label>
+        <label class="chip"><input type="checkbox" id="tDepth" checked/> depth</label>
+        <label class="chip"><input type="checkbox" id="tBlend" checked/> blend</label>
+        <label class="chip"><input type="checkbox" id="tWire"/> wire</label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <span class="badge" id="kind">stage</span>
+      <h2 id="title"><span class="num">00</span>Stage</h2>
+      <div class="desc" id="desc"></div>
+      <div class="data" id="data"></div>
+      <details>
+        <summary>How this maps to real OpenGL</summary>
+        <p id="realgl"></p>
+      </details>
+    </div>
+  </div>
+
+  <footer>Adapted from MM-806 · Introduction to Virtual/Augmented Reality and Telepresence — P. Boulanger ·
+  illustrative CPU simulation of the GL pipeline</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $=id=>document.getElementById(id);
+  const cv=$("cv"), ctx=cv.getContext("2d"), W=cv.width, H=cv.height;
+  const mono="ui-monospace,Menlo,Consolas,monospace";
+
+  /* ---------------- scene: four triangles ---------------- */
+  const TRIS=[
+    {name:"T0", line:"#ff6b6b", alpha:1,
+     pos:[[-0.70,-0.52,0.00],[0.78,-0.42,0.00],[0.03,0.80,0.00]],
+     col:[[0.95,0.30,0.30],[0.35,0.85,0.45],[0.35,0.55,0.98]]},      // RGB corners (interpolation demo)
+    {name:"T1", line:"#5fd17a", alpha:1, tex:true,
+     pos:[[0.15,-0.75,0.30],[1.05,0.15,0.30],[0.25,0.78,0.30]],
+     col:[[0.28,0.72,0.38],[0.55,0.90,0.42],[0.40,0.82,0.65]],
+     uv:[[0,0],[1,0],[0.5,1]]},
+    {name:"T2", line:"#36cfd0", alpha:0.55,
+     pos:[[-0.20,-0.62,0.58],[0.62,0.42,0.58],[-0.52,0.55,0.58]],
+     col:[[0.18,0.66,0.95],[0.32,0.90,0.86],[0.48,0.92,0.74]]},      // nearest + translucent
+    {name:"T3", line:"#f2b441", alpha:1,
+     pos:[[-1.45,-0.35,0.15],[-0.25,-0.15,0.15],[-0.85,0.95,0.15]],
+     col:[[0.96,0.58,0.24],[0.99,0.82,0.38],[0.90,0.66,0.46]]},      // sticks out of the frustum
+  ];
+  const FOLLOW=0;                 // triangle used for numeric read-outs
+  const DRAW=[0,1,3,2];           // composite order: opaque first, translucent T2 last
+
+  function mat4mul(a,b){const o=new Array(16).fill(0);for(let r=0;r<4;r++)for(let c=0;c<4;c++){let s=0;for(let k=0;k<4;k++)s+=a[r*4+k]*b[k*4+c];o[r*4+c]=s;}return o;}
+  function mvMul(m,v){const o=[0,0,0,0];for(let r=0;r<4;r++)o[r]=m[r*4]*v[0]+m[r*4+1]*v[1]+m[r*4+2]*v[2]+m[r*4+3]*v[3];return o;}
+  function perspective(f,a,n,fa){const t=1/Math.tan(f*Math.PI/360);return[t/a,0,0,0,0,t,0,0,0,0,(fa+n)/(n-fa),(2*fa*n)/(n-fa),0,0,-1,0];}
+  function translate(x,y,z){return[1,0,0,x,0,1,0,y,0,0,1,z,0,0,0,1];}
+  function rotY(a){const c=Math.cos(a),s=Math.sin(a);return[c,0,s,0,0,1,0,0,-s,0,c,0,0,0,0,1];}
+
+  // inner NDC rect (leaves a margin so out-of-frustum geometry is visible)
+  const PAD=96, gx0=PAD, gy0=PAD, gw=W-2*PAD, gh=H-2*PAD, ASPECT=gw/gh;
+  const MODEL=rotY(0.30), VIEW=translate(0,0,-2.0), PROJ=perspective(50,ASPECT,0.1,10);
+  const MVP=mat4mul(PROJ,mat4mul(VIEW,MODEL));
+
+  function project(tri){return tri.pos.map(p=>{const clip=mvMul(MVP,[p[0],p[1],p[2],1]);const w=clip[3]||1e-6;return {clip,w,ndc:[clip[0]/w,clip[1]/w,clip[2]/w]};});}
+  const PS=TRIS.map(project);
+
+  const COLS=42, ROWS=29;
+  function ndcToScreen(n){return [gx0+(n[0]*0.5+0.5)*gw, gy0+(1-(n[1]*0.5+0.5))*gh];}
+  function ndcToCell(n){return [(n[0]*0.5+0.5)*COLS, (1-(n[1]*0.5+0.5))*ROWS];}
+  function bary(px,py,a,b,c){const d=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
+    const w0=((b[1]-c[1])*(px-c[0])+(c[0]-b[0])*(py-c[1]))/d;const w1=((c[1]-a[1])*(px-c[0])+(a[0]-c[0])*(py-c[1]))/d;return [w0,w1,1-w0-w1];}
+  function signedArea(p){const a=ndcToScreen(p[0].ndc),b=ndcToScreen(p[1].ndc),c=ndcToScreen(p[2].ndc);return ((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]));}
+  const rgb=c=>`rgb(${(c[0]*255)|0},${(c[1]*255)|0},${(c[2]*255)|0})`;
+
+  // procedural texture: a two-colour checker with a thin grout line (repeats outside [0,1])
+  function sampleTex(u,v){
+    u-=Math.floor(u); v-=Math.floor(v);
+    const N=6, fu=u*N-Math.floor(u*N), fv=v*N-Math.floor(v*N);
+    if(fu<0.06||fv<0.06) return [0.10,0.14,0.18];            // grout
+    const checker=((Math.floor(u*N)+Math.floor(v*N))&1);
+    return checker ? [0.95,0.91,0.80] : [0.18,0.55,0.62];     // cream / teal
+  }
+
+  function rasterCells(p,tri){
+    const out=[],A=ndcToCell(p[0].ndc),B=ndcToCell(p[1].ndc),C=ndcToCell(p[2].ndc);
+    for(let ri=0;ri<ROWS;ri++)for(let ci=0;ci<COLS;ci++){const px=ci+0.5,py=ri+0.5,[w0,w1,w2]=bary(px,py,A,B,C);
+      if(w0>=-0.001&&w1>=-0.001&&w2>=-0.001){
+        // rasterizer interpolates the varyings only — it does NOT sample the texture
+        const vcol=[0,1,2].map(k=>w0*tri.col[0][k]+w1*tri.col[1][k]+w2*tri.col[2][k]);
+        const depth=w0*p[0].ndc[2]+w1*p[1].ndc[2]+w2*p[2].ndc[2];
+        let uv=null;                       // textured triangles also interpolate a UV varying
+        if(tri.tex&&tri.uv) uv=[0,1].map(k=>w0*tri.uv[0][k]+w1*tri.uv[1][k]+w2*tri.uv[2][k]);
+        // ramp = the interpolated vertex colour the rasterizer hands on (shown the same for every triangle)
+        out.push({ci,ri,ramp:vcol,depth,a:tri.alpha,uv,tex:!!(tri.tex&&tri.uv)});}}
+    return out;
+  }
+  // the fragment shader's output colour: textured fragments sample here, others pass the varying through
+  function fragColor(c){ return c.tex ? sampleTex(c.uv[0],c.uv[1]) : c.ramp; }
+  const CELLS=TRIS.map((t,i)=>rasterCells(PS[i],t));
+  const FLAT=[]; DRAW.forEach(i=>CELLS[i].forEach(c=>FLAT.push(Object.assign({ti:i},c))));
+
+  // Sutherland–Hodgman clip of a triangle (NDC) against the [-1,1] square
+  function clipNDC(p){
+    let poly=p.map(v=>[v.ndc[0],v.ndc[1]]);
+    const ix=(a,b,x)=>{const t=(x-a[0])/(b[0]-a[0]);return [x,a[1]+t*(b[1]-a[1])];};
+    const iy=(a,b,y)=>{const t=(y-a[1])/(b[1]-a[1]);return [a[0]+t*(b[0]-a[0]),y];};
+    const edges=[
+      {in:q=>q[0]>=-1,cut:(a,b)=>ix(a,b,-1)},{in:q=>q[0]<=1,cut:(a,b)=>ix(a,b,1)},
+      {in:q=>q[1]>=-1,cut:(a,b)=>iy(a,b,-1)},{in:q=>q[1]<=1,cut:(a,b)=>iy(a,b,1)}];
+    for(const e of edges){const inp=poly;poly=[];for(let i=0;i<inp.length;i++){
+      const cur=inp[i],prev=inp[(i+inp.length-1)%inp.length],ci=e.in(cur),pi=e.in(prev);
+      if(ci){if(!pi)poly.push(e.cut(prev,cur));poly.push(cur);} else if(pi){poly.push(e.cut(prev,cur));}}
+      if(!poly.length)break;}
+    return poly; // array of [ndcx,ndcy]
+  }
+  const CLIPPED=PS.map(clipNDC);
+
+  /* ---------------- drawing helpers ---------------- */
+  function clear(){ctx.clearRect(0,0,W,H);ctx.fillStyle="#080c13";ctx.fillRect(0,0,W,H);}
+  function frame(label,accent,dashed){
+    ctx.save();if(dashed)ctx.setLineDash([5,5]);
+    ctx.strokeStyle=dashed?"#37506e":"#1b2435";ctx.lineWidth=1;ctx.strokeRect(gx0,gy0,gw,gh);ctx.restore();
+    ctx.fillStyle=accent;ctx.font="600 11px "+mono;ctx.fillText(label,gx0,gy0-16);
+  }
+  function axes2D(){ctx.save();ctx.translate(gx0+gw/2,gy0+gh/2);ctx.strokeStyle="#223047";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(-gw/2,0);ctx.lineTo(gw/2,0);ctx.moveTo(0,-gh/2);ctx.lineTo(0,gh/2);ctx.stroke();ctx.restore();}
+  function gridBack(){ctx.strokeStyle="#101826";ctx.lineWidth=1;
+    for(let c=0;c<=COLS;c++){const x=gx0+c/COLS*gw;ctx.beginPath();ctx.moveTo(x,gy0);ctx.lineTo(x,gy0+gh);ctx.stroke();}
+    for(let r=0;r<=ROWS;r++){const y=gy0+r/ROWS*gh;ctx.beginPath();ctx.moveTo(gx0,y);ctx.lineTo(gx0+gw,y);ctx.stroke();}}
+  function cellRect(ci,ri){return[gx0+ci/COLS*gw,gy0+ri/ROWS*gh,gw/COLS,gh/ROWS];}
+
+  function triFull(i,opts){ // full triangle outline + verts (pre-clip stages)
+    opts=opts||{};const p=PS[i],T=TRIS[i],pts=p.map(v=>ndcToScreen(v.ndc));
+    if(opts.fill){ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);ctx.lineTo(pts[1][0],pts[1][1]);ctx.lineTo(pts[2][0],pts[2][1]);ctx.closePath();ctx.fillStyle=opts.fill;ctx.fill();}
+    ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);ctx.lineTo(pts[1][0],pts[1][1]);ctx.lineTo(pts[2][0],pts[2][1]);ctx.closePath();
+    ctx.strokeStyle=T.line;ctx.lineWidth=opts.lw||2;ctx.globalAlpha=opts.ga||1;ctx.stroke();ctx.globalAlpha=1;
+    if(opts.verts)p.forEach((v,k)=>{const s=ndcToScreen(v.ndc);ctx.beginPath();ctx.arc(s[0],s[1],5,0,7);ctx.fillStyle=rgb(T.col[k]);ctx.fill();ctx.strokeStyle="#0b0e14";ctx.lineWidth=2;ctx.stroke();});
+    if(opts.label){const s=ndcToScreen(p[0].ndc);ctx.fillStyle=T.line;ctx.font="11px "+mono;ctx.fillText(T.name,s[0]+8,s[1]-8);}
+  }
+  function triClipped(i,opts){ // filled clipped polygon (clip + post-clip stages)
+    opts=opts||{};const poly=CLIPPED[i],T=TRIS[i];
+    if(poly.length){const sp=poly.map(q=>ndcToScreen(q));
+      if(opts.fill!==false){ctx.beginPath();ctx.moveTo(sp[0][0],sp[0][1]);for(let k=1;k<sp.length;k++)ctx.lineTo(sp[k][0],sp[k][1]);ctx.closePath();
+        ctx.fillStyle=opts.fill||(T.line+"22");ctx.fill();}
+      ctx.beginPath();ctx.moveTo(sp[0][0],sp[0][1]);for(let k=1;k<sp.length;k++)ctx.lineTo(sp[k][0],sp[k][1]);ctx.closePath();
+      ctx.strokeStyle=T.line;ctx.lineWidth=opts.lw||1.8;ctx.stroke();}
+  }
+  function legend(items){ // items: [{c,t}]
+    const x=gx0+6,y=gy0+gh-6-items.length*15;
+    ctx.font="10.5px "+mono;
+    items.forEach((it,k)=>{const yy=y+k*15;ctx.fillStyle=it.c;ctx.fillRect(x,yy-8,10,10);
+      ctx.fillStyle="#aab8d4";ctx.fillText(it.t,x+16,yy);});
+  }
+  const vec=a=>"("+a.map(v=>v.toFixed(2)).join(", ")+")";
+  const swatch=c=>`<span style="color:${rgb(c)};font-size:13px">■</span>`;
+  function cullDecision(front){const on=$("tCull")&&$("tCull").checked;return on?(front?"kept":"<span class='r'>discarded</span>"):"kept (cull off)";}
+
+  // texture-space inset: draw the source texture + the textured triangle's UV triangle
+  function textureInset(ti){
+    const T=TRIS[ti]; if(!T.tex||!T.uv) return;
+    const S=104, ix=gx0+gw-S+34, iy=gy0+2;  // top-right, partly in the margin
+    ctx.fillStyle="#0a0f17";ctx.fillRect(ix-6,iy-2,S+12,S+30);
+    ctx.strokeStyle="#2a3850";ctx.lineWidth=1;ctx.strokeRect(ix-6,iy-2,S+12,S+30);
+    // sample the texture over a grid
+    const M=34;for(let r=0;r<M;r++)for(let c=0;c<M;c++){const u=(c+0.5)/M,v=(r+0.5)/M;
+      ctx.fillStyle=rgb(sampleTex(u,v));ctx.fillRect(ix+c/M*S, iy+(1-(r+1)/M)*S, S/M+0.6, S/M+0.6);}
+    // UV triangle (v points up)
+    const P=T.uv.map(uv=>[ix+uv[0]*S, iy+(1-uv[1])*S]);
+    ctx.beginPath();ctx.moveTo(P[0][0],P[0][1]);ctx.lineTo(P[1][0],P[1][1]);ctx.lineTo(P[2][0],P[2][1]);ctx.closePath();
+    ctx.strokeStyle=T.line;ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle="#dfe7f4";ctx.font="9.5px "+mono;
+    T.uv.forEach((uv,k)=>ctx.fillText("("+uv[0]+","+uv[1]+")",P[k][0]+(k===1?-6:4),P[k][1]+(k===2?-4:11)));
+    ctx.fillStyle=T.line;ctx.font="10px "+mono;ctx.fillText("texture · "+T.name+" UVs",ix-3,iy+S+18);
+  }
+
+  let enter=0; const prog=()=>Math.min(1,(performance.now()-enter)/1100);
+
+  // composite all four honouring toggles
+  function composite(){
+    gridBack();
+    const depthOn=$("tDepth").checked,blendOn=$("tBlend").checked,wire=$("tWire").checked,cullOn=$("tCull").checked;
+    const buf={};
+    function put(cell){
+      const key=cell.ci+","+cell.ri,ex=buf[key],inc={col:fragColor(cell).slice(),depth:cell.depth,a:cell.a};
+      if(!ex){buf[key]=inc;return;}
+      if(depthOn&&inc.depth>ex.depth)return;
+      if(blendOn&&inc.a<1){const out=[0,1,2].map(k=>inc.col[k]*inc.a+ex.col[k]*(1-inc.a));
+        buf[key]={col:out,depth:depthOn?Math.min(ex.depth,inc.depth):inc.depth,a:1};}
+      else buf[key]=inc;
+    }
+    DRAW.forEach(i=>{const front=signedArea(PS[i])>0;if(cullOn&&!front)return;CELLS[i].forEach(put);});
+    Object.keys(buf).forEach(k=>{const[ci,ri]=k.split(",").map(Number),[x,y,w,h]=cellRect(ci,ri);
+      if(wire){ctx.strokeStyle=rgb(buf[k].col);ctx.strokeRect(x+0.5,y+0.5,w-1,h-1);}
+      else{ctx.fillStyle=rgb(buf[k].col);ctx.fillRect(x+0.5,y+0.5,w-1,h-1);}});
+    DRAW.forEach(i=>triClipped(i,{fill:false,lw:1}));
+  }
+
+  /* ---------------- stages ---------------- */
+  const stages=[
+    { nm:"Vertex<br>Specification", kd:"input", accent:"var(--vtx)", kind:"fixed",
+      title:"Vertex Specification", desc:
+      "Four triangles begin as numbers in a <b>vertex buffer</b> (VBO); a <b>vertex array</b> (VAO) records how to read them. Nothing is drawn yet — this stage just defines the 12 vertices that will enter the pipeline.",
+      draw(){clear();frame("VERTEX BUFFER  (geometry plotted)","#8b7bff");axes2D();
+        TRIS.forEach((t,i)=>triFull(i,{fill:t.line+"12",verts:true,label:true}));},
+      data(){const row=t=>`<span class="g">${t.name}</span> aCol ${t.col.map(swatch).join(" ")}  ${t.col.map(vec).join(" ")}`;
+        return `<span class="m">// 12 verts × (vec3 aPos, vec3 aCol) — per-triangle vertex colours</span>
+${TRIS.map(row).join("\n")}
+<span class="m">T1 also carries loc=2 <span class="c">aUV</span> — its aCol is overridden by the texture</span>
+glDrawArrays(GL_TRIANGLES, 0, <span class="c">12</span>)`;},
+      real:"glBufferData uploads the bytes; glVertexAttribPointer in the bound VAO describes the layout. The GPU streams these 12 vertices to the vertex shader, three at a time." },
+
+    { nm:"Vertex<br>Shader", kd:"●shader", accent:"var(--xform)", kind:"prog",
+      title:"Vertex Shader", desc:
+      "Runs <b>once per vertex</b> (12 times here). It places each vertex in <b>clip space</b> via the model-view-projection matrix and passes colour through as a varying.",
+      draw(){clear();frame("OBJECT  →  CLIP SPACE","#4d8cff");axes2D();
+        TRIS.forEach((t,i)=>triFull(i,{fill:t.line+"10",verts:true,label:true}));
+        ctx.fillStyle="#4d8cff";ctx.font="11px "+mono;ctx.globalAlpha=0.5+0.5*Math.sin(prog()*6);
+        ctx.fillText("× MVP",gx0+gw-66,gy0+gh-10);ctx.globalAlpha=1;},
+      data(){const c=PS[FOLLOW][0].clip;return `<span class="m">#version 330 core</span>
+in vec3 <span class="c">aPos</span>; in vec3 <span class="a">aCol</span>;
+uniform mat4 <span class="g">uMVP</span>; out vec3 vCol;
+void main(){
+  gl_Position = <span class="g">uMVP</span> * vec4(<span class="c">aPos</span>,1.0);
+  vCol = <span class="a">aCol</span>;
+}
+<span class="m">// T0 v0 → clip</span>
+gl_Position = ( ${c[0].toFixed(2)}, ${c[1].toFixed(2)}, ${c[2].toFixed(2)}, <span class="r">${c[3].toFixed(2)}</span> )`;},
+      real:"GLSL you write. gl_Position is in clip space — homogeneous coordinates whose w carries the perspective for the divide that comes later." },
+
+    { nm:"Tessell-<br>ation", kd:"⋯ optional", accent:"var(--vtx)", kind:"opt", opt:true,
+      title:"Tessellation", desc:
+      "An <b>optional</b> programmable stage that subdivides <b>patches</b> into many small primitives — used for smooth curved surfaces and adaptive detail. Our draw call is GL_TRIANGLES, so it is idle.",
+      draw(){clear();frame("PATCH SUBDIVISION (concept)","#8b7bff");
+        const a=ndcToScreen([-0.55,-0.45]),b=ndcToScreen([0.55,-0.45]),c=ndcToScreen([0,0.6]);
+        const lvl=2+Math.floor(prog()*2);ctx.strokeStyle="#2c3a55";
+        for(let i=0;i<=lvl;i++)for(let j=0;j<=lvl-i;j++){const k=lvl-i-j,u=i/lvl,v=j/lvl,w=k/lvl;
+          ctx.beginPath();ctx.arc(u*a[0]+v*b[0]+w*c[0],u*a[1]+v*b[1]+w*c[1],2.5,0,7);ctx.fillStyle="#8b7bff";ctx.fill();}
+        ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.lineTo(c[0],c[1]);ctx.closePath();ctx.strokeStyle="#8b7bff";ctx.lineWidth=2;ctx.stroke();},
+      data(){return `<span class="m">// active only for GL_PATCHES draws</span>
+glPatchParameteri(GL_PATCH_VERTICES, 3);
+TCS sets gl_TessLevelOuter / Inner
+TES positions each generated vertex
+<span class="g">status: idle</span>  <span class="m">(this draw uses GL_TRIANGLES)</span>`;},
+      real:"Two shader stages plus a fixed tessellator. Skipped entirely unless the primitive type is GL_PATCHES." },
+
+    { nm:"Geometry<br>Shader", kd:"⋯ optional", accent:"var(--vtx)", kind:"opt", opt:true,
+      title:"Geometry Shader", desc:
+      "Optional. Runs once per primitive and may <b>emit new primitives</b> (normals, sprites, cube-map layers). Here it is a pass-through: four triangles in, four out.",
+      draw(){clear();frame("PER-PRIMITIVE (pass-through)","#8b7bff");axes2D();
+        TRIS.forEach((t,i)=>triFull(i,{fill:t.line+"0c",label:true,ga:0.85}));
+        ctx.fillStyle="#8b7bff";ctx.font="11px "+mono;ctx.fillText("4 triangles in → 4 out",gx0+8,gy0+gh-8);},
+      data(){return `layout(triangles) in;
+layout(triangle_strip, max_vertices=3) out;
+void main(){
+  for(int i=0;i<3;i++){ gl_Position=gl_in[i].gl_Position; EmitVertex(); }
+  EndPrimitive();
+}
+<span class="g">status: pass-through</span>`;},
+      real:"Optional and often a performance cost; many engines skip it. Output primitives feed vertex post-processing." },
+
+    { nm:"Clip +<br>÷w", kd:"frustum cut", accent:"var(--clip)", kind:"fixed",
+      title:"Clipping & Perspective Divide", desc:
+      "Fixed-function. Primitives are <b>clipped to the view frustum</b> — the part of <b>T3</b> outside the boundary is trimmed away. Survivors are divided by <b>w</b> (the perspective divide) into the <b>NDC</b> cube, x,y,z ∈ [-1, 1].",
+      draw(){clear();frame("NDC CUBE  +  FRUSTUM CLIP","#36cfd0",true);axes2D();
+        TRIS.forEach((t,i)=>triFull(i,{ga:0.28,lw:1}));      // ghost of original extent
+        DRAW.forEach(i=>triClipped(i,{fill:TRIS[i].line+"22"})); // retained region
+        legend([{c:"#f2b441",t:"T3 — clipped at x=-1 and y=+1"}]);},
+      data(){const v=PS[3];const beyond=v.filter(q=>Math.abs(q.ndc[0])>1||Math.abs(q.ndc[1])>1).length;
+        return `<span class="m">// T3 has ${beyond} vertices outside [-1,1]</span>
+T3 v0 ndc.x = <span class="r">${PS[3][0].ndc[0].toFixed(2)}</span>  (&lt; -1 → outside)
+T3 v2 ndc.y = <span class="r">${PS[3][2].ndc[1].toFixed(2)}</span>  (&gt; +1 → outside)
+Sutherland–Hodgman: 3-gon → <span class="c">${CLIPPED[3].length}-gon</span>
+<span class="m">// T0 v0 perspective divide (w=${PS[0][0].clip[3].toFixed(2)})</span>
+x_ndc = ${PS[0][0].clip[0].toFixed(2)} / ${PS[0][0].clip[3].toFixed(2)} = <span class="c">${PS[0][0].ndc[0].toFixed(3)}</span>`;},
+      real:"Clipping happens in clip space against -w ≤ coord ≤ w (before the divide) so signs are handled correctly; a clipped triangle becomes a small polygon, re-triangulated downstream. Here it is shown in NDC for clarity." },
+
+    { nm:"Viewport<br>Transform", kd:"to pixels", accent:"var(--clip)", kind:"fixed",
+      title:"Viewport Transform", desc:
+      "NDC [-1, 1] is stretched onto the <b>window in pixels</b> set by glViewport. The clipped geometry now lands on real screen coordinates; z is mapped into the depth range.",
+      draw(){clear();frame("WINDOW SPACE (pixels)","#36cfd0");
+        ctx.fillStyle="#5d6c87";ctx.font="10px "+mono;ctx.fillText("(0,0)",gx0+2,gy0-4);ctx.fillText("("+(gw|0)+","+(gh|0)+")",gx0+gw-66,gy0+gh+16);
+        DRAW.forEach(i=>triClipped(i,{fill:TRIS[i].line+"1c"}));
+        const s=ndcToScreen(PS[FOLLOW][0].ndc);ctx.fillStyle="#9fb0cc";ctx.font="10px "+mono;
+        ctx.fillText("T0 v0 ("+((s[0]-gx0)|0)+","+((s[1]-gy0)|0)+")",s[0]+8,s[1]-8);},
+      data(){const s=ndcToScreen(PS[FOLLOW][0].ndc);return `glViewport(0, 0, ${gw|0}, ${gh|0});
+<span class="m">// T0 v0 NDC (${PS[0][0].ndc[0].toFixed(2)}, ${PS[0][0].ndc[1].toFixed(2)}) → px</span>
+x_win = (${PS[0][0].ndc[0].toFixed(2)}*0.5+0.5) * ${gw|0} = <span class="c">${(s[0]-gx0).toFixed(1)}</span>
+y_win = (1-(${PS[0][0].ndc[1].toFixed(2)}*0.5+0.5)) * ${gh|0} = <span class="c">${(s[1]-gy0).toFixed(1)}</span>`;},
+      real:"glViewport defines the rectangle; glDepthRange maps z. Same NDC, different viewport → different pixels: the basis of split-screen and render-to-texture." },
+
+    { nm:"Primitive<br>Assembly", kd:"+ culling", accent:"var(--raster)", kind:"fixed",
+      title:"Primitive Assembly & Culling", desc:
+      "Vertices are grouped back into triangles. Each triangle's <b>winding</b> (signed screen area) says which face you see; with back-face culling on, away-facing triangles are dropped here. All four of ours are front-facing.",
+      draw(){clear();frame("WINDING ORDER (all CCW = front)","#5fd17a");axes2D();
+        DRAW.forEach(i=>{const p=PS[i],front=signedArea(p)>0,pts=p.map(v=>ndcToScreen(v.ndc));
+          triClipped(i,{fill:(front?TRIS[i].line:"#ff5a5a")+"1c"});
+          for(let k=0;k<3;k++){const a=pts[k],b=pts[(k+1)%3],mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
+            ctx.save();ctx.translate(mx,my);ctx.rotate(ang);ctx.strokeStyle=TRIS[i].line;ctx.lineWidth=1.5;
+            ctx.beginPath();ctx.moveTo(-6,-3);ctx.lineTo(0,0);ctx.lineTo(-6,3);ctx.stroke();ctx.restore();}});},
+      data(){const areas=TRIS.map((t,i)=>signedArea(PS[i]));return `glFrontFace(GL_CCW);  glCullFace(GL_BACK);
+<span class="m">signed screen area (px²):</span>
+T0 ${areas[0].toFixed(0)}   T1 ${areas[1].toFixed(0)}
+T2 ${areas[2].toFixed(0)}   T3 ${areas[3].toFixed(0)}
+all &gt; 0  →  <span class="g">CCW · front-facing</span>
+cull back faces: ${cullDecision(true)}  <span class="m">(none removed)</span>`;},
+      real:"glEnable(GL_CULL_FACE) with glCullFace/glFrontFace. None of these four face away, so toggling 'cull' removes nothing here — on a closed mesh it would discard roughly half the triangles." },
+
+    { nm:"Rasteri-<br>zation", kd:"→ fragments", accent:"var(--raster)", kind:"fixed",
+      title:"Rasterization", desc:
+      "Each triangle becomes <b>fragments</b> — one per covered grid cell — with its varyings <b>interpolated</b> across the surface. Every triangle, T1 included, shows its interpolated <b>vertex colour</b> here. T1 <i>also</i> interpolates a UV varying (value in the readout), but the texture is <b>not sampled yet</b> — that happens in the fragment shader. No depth decisions yet either: overlapping fragments just pile up.",
+      draw(){clear();frame("FRAGMENT COVERAGE + INTERPOLATION","#5fd17a");gridBack();
+        const n=Math.floor(prog()*FLAT.length);
+        for(let k=0;k<FLAT.length;k++){const c=FLAT[k],[x,y,w,h]=cellRect(c.ci,c.ri);
+          ctx.fillStyle=k<n?rgb(c.ramp):"rgba(95,209,122,0.08)";ctx.globalAlpha=k<n?0.95:0.5;ctx.fillRect(x+0.5,y+0.5,w-1,h-1);ctx.globalAlpha=1;}
+        DRAW.forEach(i=>triClipped(i,{fill:false,lw:1}));
+        legend([{c:"#5fd17a",t:"T1: interpolated vertex colour (UV also interpolated, sampled later)"}]);},
+      data(){const tot=CELLS.reduce((s,c)=>s+c.length,0);const ex=CELLS[FOLLOW][Math.floor(CELLS[FOLLOW].length*0.5)];
+        const b=bary(ex.ci+0.5,ex.ri+0.5,ndcToCell(PS[FOLLOW][0].ndc),ndcToCell(PS[FOLLOW][1].ndc),ndcToCell(PS[FOLLOW][2].ndc));
+        const t1=CELLS[1][Math.floor(CELLS[1].length*0.5)];
+        return `fragments: T0 ${CELLS[0].length}  T1 ${CELLS[1].length}  T2 ${CELLS[2].length}  T3 ${CELLS[3].length}
+total candidates: <span class="g">${tot}</span>   grid ${COLS}×${ROWS}
+<span class="m">// one T0 fragment, barycentric weights</span>
+(w0,w1,w2) = (${b[0].toFixed(2)}, ${b[1].toFixed(2)}, ${b[2].toFixed(2)})
+vCol = ${vec(ex.ramp)}  <span class="m">// R·G·B interpolated</span>
+<span class="m">// T1 interpolates a UV varying the same way</span>
+vUV(T1) = (${t1.uv[0].toFixed(2)}, ${t1.uv[1].toFixed(2)})  <span class="m">// sampled next stage</span>`;},
+      real:"Fixed-function, parallel across tiles. Attributes are perspective-correct interpolated (÷w then renormalized). Fragments outside the viewport were already removed by clipping." },
+
+    { nm:"Fragment<br>Shader", kd:"●shader", accent:"var(--frag)", kind:"prog",
+      title:"Fragment Shader", desc:
+      "Runs <b>once per fragment</b> — textures, lighting, shadows live here. This is where <b>T1's</b> interpolated UV is finally fed to <code>texture()</code> and the checker is <b>sampled</b>: watch T1 switch from its interpolated green <b>vertex colour</b> to the texture, which overrides it. The other triangles pass their vertex colour straight through. A shading gradient is added on top.",
+      draw(){clear();frame("PER-FRAGMENT SHADING + TEXTURE SAMPLE","#f2b441");gridBack();
+        DRAW.forEach(i=>CELLS[i].forEach(c=>{const[x,y,w,h]=cellRect(c.ci,c.ri);
+          const lit=0.65+0.45*(1-c.ri/ROWS),col=fragColor(c).map(v=>Math.min(1,v*lit));
+          ctx.fillStyle=rgb(col);ctx.fillRect(x+0.5,y+0.5,w-1,h-1);}));
+        DRAW.forEach(i=>{if(TRIS[i].tex)triClipped(i,{fill:false,lw:1.6});});
+        textureInset(1);},
+      data(){const tot=CELLS.reduce((s,c)=>s+c.length,0);
+        const t1=CELLS[1], ex=t1[Math.floor(t1.length*0.5)];
+        return `<span class="m">#version 330 core</span>
+in vec3 vCol; in vec2 <span class="c">vUV</span>;
+uniform sampler2D <span class="g">uTex</span>;
+out vec4 <span class="a">FragColor</span>;
+void main(){
+  vec3 base = <span class="g">texture</span>(<span class="g">uTex</span>, <span class="c">vUV</span>).rgb;   <span class="m">// T1</span>
+  <span class="a">FragColor</span> = vec4(base * shade, alpha);
+}
+<span class="m">// T1 sample: vUV = (${ex.uv[0].toFixed(2)}, ${ex.uv[1].toFixed(2)}) → texel ${vec(fragColor(ex))}</span>
+<span class="m">// ${tot} fragments this frame, in parallel</span>`;},
+      real:"Your GLSL. texture(uTex, vUV) samples a bound texture unit; the hardware handles filtering (bilinear, mipmaps) and wrap modes. The shader cannot see neighbouring fragments except via derivatives, which is how it picks a mip level." },
+
+    { nm:"Depth /<br>Blend", kd:"per-sample", accent:"var(--out)", kind:"fixed",
+      title:"Per-Sample Operations", desc:
+      "Each fragment runs a gauntlet: scissor, stencil, the <b>depth test</b> (is something nearer already there?), then <b>blending</b>. Here the four overlapping triangles are resolved — nearer wins, and translucent <b>T2</b> mixes with whatever sits behind it.",
+      draw(){clear();frame("DEPTH TEST + BLEND (4 triangles)","#e36a99");composite();
+        legend([{c:"#36cfd0",t:"T2 nearest, α0.55 — blends"},{c:"#ff6b6b",t:"T0 farthest"}]);},
+      data(){const d=TRIS.map((t,i)=>(PS[i][0].ndc[2]+PS[i][1].ndc[2]+PS[i][2].ndc[2])/3);
+        const order=[0,1,2,3].sort((a,b)=>d[a]-d[b]).map(i=>"T"+i).join(" < ");
+        return `glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS);
+<span class="m">avg NDC depth (near → far):</span>
+${order}
+glEnable(GL_BLEND);
+glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  T2: out = src·0.55 + dst·0.45
+depth ${$("tDepth").checked?'<span class="g">on</span>':'<span class="r">off</span>'}   blend ${$("tBlend").checked?'<span class="g">on</span>':'<span class="r">off</span>'}`;},
+      real:"All fixed-function but highly configurable. Correct order: opaque first with depth write, then translucent back-to-front with blending. Toggle depth/blend to see the artifacts each prevents." },
+
+    { nm:"Frame-<br>buffer", kd:"output", accent:"var(--out)", kind:"fixed",
+      title:"Framebuffer", desc:
+      "The survivors are written to the framebuffer's colour and depth attachments and presented to the screen. Four overlapping triangles, one of them clipped by the frustum, resolved into a single image.",
+      draw(){clear();frame("FINAL IMAGE","#e36a99");composite();
+        legend([{c:"#f2b441",t:"T3 edge cut by frustum"}]);},
+      data(){const tot=CELLS.reduce((s,c)=>s+c.length,0);return `<span class="m">// default framebuffer 0 → display</span>
+colour : RGBA8  ${gw|0}×${gh|0}
+depth  : DEPTH24
+fragment candidates : <span class="g">${tot}</span>
+primitives drawn : 4 (1 clipped)
+<span class="m">SwapBuffers()</span> → frame presented`;},
+      real:"Bind your own FBO instead of the screen to render to a texture — the basis of shadow maps, post-processing, and the camera-passthrough compositing in an AR headset." },
+  ];
+
+  /* ---------------- rail + state ---------------- */
+  let cur=0, playing=false, playT=0;
+  const rail=$("rail");
+  stages.forEach((s,i)=>{const n=document.createElement("button");
+    n.className="node";n.setAttribute("role","tab");n.dataset.prog=s.kind==="prog"?"1":"0";if(s.opt)n.dataset.opt="1";
+    n.style.setProperty("--accent",s.accent);
+    n.innerHTML='<span class="top"></span><span class="ix">'+String(i).padStart(2,"0")+'</span><span class="nm">'+s.nm+'</span><span class="kd">'+s.kd+'</span>';
+    n.onclick=()=>go(i);rail.appendChild(n);});
+
+  function go(i){cur=(i+stages.length)%stages.length;enter=performance.now();
+    [...rail.children].forEach((n,k)=>n.setAttribute("aria-current",k===cur?"true":"false"));
+    const s=stages[cur];
+    $("cap").textContent=s.nm.replace(/<br>/g," ");
+    $("kind").className="badge "+(s.kind==="prog"?"prog":s.kind==="opt"?"opt":"fixed");
+    $("kind").textContent=s.kind==="prog"?"● programmable":s.kind==="opt"?"⋯ optional":"○ fixed-function";
+    $("title").innerHTML='<span class="num">'+String(cur).padStart(2,"0")+'</span>'+s.title;
+    $("desc").innerHTML=s.desc;$("data").innerHTML=s.data();$("realgl").textContent=s.real;
+    rail.children[cur].scrollIntoView({inline:"center",block:"nearest",behavior:"smooth"});}
+  function refreshData(){$("data").innerHTML=stages[cur].data();}
+
+  $("prev").onclick=()=>go(cur-1);
+  $("next").onclick=()=>go(cur+1);
+  $("play").onclick=()=>{playing=!playing;playT=performance.now();$("play").textContent=playing?"❚❚ Pause":"▶ Play";};
+  ["tCull","tDepth","tBlend","tWire"].forEach(id=>$(id).addEventListener("change",refreshData));
+  document.addEventListener("keydown",e=>{if(e.key==="ArrowRight")go(cur+1);if(e.key==="ArrowLeft")go(cur-1);});
+
+  function loop(now){stages[cur].draw();
+    if(playing&&now-playT>1700){playT=now;if(cur===stages.length-1){playing=false;$("play").textContent="▶ Play";}else go(cur+1);}
+    requestAnimationFrame(loop);}
+  go(0);requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HoloLens Optics — MM806</title>
+<style>
+  :root{--bg:#070b12;--panel:#151b24;--line:#232c38;--ink:#c9d4e0;--ink-dim:#6b7888;--signal:#4fd6e0;--hud:#5ef0c8;--warn:#ffd166;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;}
+  #stage{position:fixed;inset:0;display:block;}
+  .overlay{position:fixed;z-index:10;pointer-events:none;}
+  .masthead{top:0;left:0;padding:16px 18px;}
+  .masthead .course{font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.22em;color:var(--signal);text-transform:uppercase;}
+  .masthead .title{margin-top:6px;font-size:15px;font-weight:600;}
+  .masthead .sub{margin-top:2px;font-size:12px;color:var(--ink-dim);}
+  .hud{top:0;right:0;padding:14px 18px;text-align:right;font:500 11px/1.7 ui-monospace,Menlo,monospace;color:var(--ink-dim);}
+  .hud b{color:var(--hud);font-weight:600;}
+  .panel{top:82px;left:18px;width:222px;pointer-events:auto;background:rgba(21,27,36,.93);
+    border:1px solid var(--line);border-radius:10px;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);max-height:calc(100vh - 100px);overflow:auto;}
+  .panel-toggle{width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);
+    border-radius:10px 10px 0 0;color:var(--signal);font:600 10px/1 ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:10px 12px;cursor:pointer;position:sticky;top:0;background:rgba(21,27,36,.98);}
+  .panel-body{padding:11px 12px 13px;display:flex;flex-direction:column;gap:12px;}
+  .grp{display:flex;flex-direction:column;gap:8px;}
+  .grp-title{font:600 10px/1 ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);}
+  .panel label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ink-dim);}
+  .panel label .val{color:var(--ink);font-family:ui-monospace,monospace;}
+  .panel label.row{flex-direction:row;align-items:center;gap:8px;color:var(--ink);}
+  .panel input[type=range]{width:100%;accent-color:var(--signal);margin:0;}
+  .panel input[type=checkbox]{accent-color:var(--signal);width:14px;height:14px;}
+  .status{left:0;bottom:0;padding:14px 18px;max-width:60ch;font-size:12px;line-height:1.5;color:var(--ink-dim);}
+  .status .pill{display:inline-block;font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;padding:4px 7px;border:1px solid var(--line);border-radius:5px;margin-right:6px;color:var(--ink);}
+  @media (max-width:600px){.panel{top:8px;left:8px;width:176px;}.masthead,.status{display:none;}}
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .seg button{font:600 11px/1.2 ui-monospace,monospace;color:var(--ink-dim);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 4px;cursor:pointer;}
+  .seg button.active{border-color:var(--signal);color:var(--signal);background:#12242a;}
+</style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <div class="overlay masthead">
+    <div class="course">MM806 · AR OPTICS</div>
+    <div class="title">HoloLens Waveguide</div>
+    <div class="sub">Light engine → in-couple → TIR → out-couple → eye</div>
+  </div>
+
+  <div class="overlay hud" id="hud" aria-hidden="true">
+    <div>field <b id="h-field">0°</b></div>
+    <div>TIR angle <b id="h-tir">58°</b></div>
+    <div>critical <b id="h-crit">36°</b></div>
+    <div>exit beams <b id="h-exit">5</b></div>
+  </div>
+
+  <div class="overlay panel" id="panel">
+    <button class="panel-toggle" id="panel-toggle" aria-expanded="true">Controls &#9662;</button>
+    <div class="panel-body" id="panel-body">
+      <div class="grp">
+        <div class="grp-title">View</div>
+        <div class="seg" id="seg-view">
+          <button data-v="side" class="active">Side<br>(light path)</button>
+          <button data-v="front">Front<br>(pupil expansion)</button>
+        </div>
+      </div>
+      <div class="grp">
+        <div class="grp-title">Image</div>
+        <label>Field angle (pixel) <span class="val" id="v-field">0°</span><input type="range" id="s-field" min="-20" max="20" step="0.5" value="0"></label>
+        <label class="row"><input type="checkbox" id="c-sweep"> Sweep the field (scan the image)</label>
+      </div>
+      <div class="grp">
+        <div class="grp-title">Waveguide</div>
+        <label>Thickness <span class="val" id="v-th">1.0</span><input type="range" id="s-th" min="0.4" max="2" step="0.05" value="1"></label>
+        <label>Index n <span class="val" id="v-n">1.70</span><input type="range" id="s-n" min="1.5" max="2.0" step="0.01" value="1.7"></label>
+      </div>
+      <div class="grp">
+        <div class="grp-title">Show</div>
+        <label class="row"><input type="checkbox" id="c-eyebox" checked> Pupil replication (eyebox)</label>
+        <label class="row"><input type="checkbox" id="c-rgb"> RGB waveguide layers</label>
+        <label class="row"><input type="checkbox" id="c-real" checked> Real-world light (see-through)</label>
+        <label class="row"><input type="checkbox" id="c-photon" checked> Animate light</label>
+        <label class="row"><input type="checkbox" id="c-labels" checked> Labels</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay status">
+    <span class="pill">OPTICS</span><span>A microdisplay's collimated light is diffracted into the glass, bounces by total internal reflection, and is diffracted back out over the eye. Each pixel = one beam angle; the out-coupler replicates the pupil to make an eyebox. The glass stays transparent, so you also see the real world.</span>
+  </div>
+
+<script>
+// ===========================================================================
+//  MM806 — HoloLens diffractive-waveguide optics (2D cross-section)
+//  Light engine (microdisplay + collimating lens) makes each PIXEL a parallel
+//  beam at a specific angle (the field angle). An IN-COUPLING grating diffracts
+//  that beam so it exceeds the critical angle and travels by TOTAL INTERNAL
+//  REFLECTION down the thin glass. An OUT-COUPLING grating over the eye ejects a
+//  little light at every bounce (pupil replication -> eyebox), at the SAME angle
+//  it entered, so the eye's lens focuses it to a retinal point = that pixel. The
+//  glass is transparent, so real-world light passes straight through: see-through
+//  AR. Diffraction is wavelength-dependent, so R/G/B use stacked layers.
+// ===========================================================================
+const $=(id)=>document.getElementById(id);
+const cv=$('stage'); const ctx=cv.getContext('2d');
+const D2R=Math.PI/180, R2D=180/Math.PI;
+let W=0,H=0,dpr=1;
+function resize(){ dpr=Math.min(window.devicePixelRatio||1,2); W=window.innerWidth; H=window.innerHeight;
+  cv.width=W*dpr; cv.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
+window.addEventListener('resize', resize); resize();
+
+// ---- state -----------------------------------------------------------------
+let field=0, thick=1, nIdx=1.70, eyebox=true, rgb=false, real=true, photon=true, labels=true, sweep=false;
+let view='side';
+let tAnim=0, sweepPhase=0;
+$('s-field').addEventListener('input',e=>{ field=+e.target.value; $('v-field').textContent=field+'°'; });
+$('c-sweep').addEventListener('change',e=>sweep=e.target.checked);
+$('s-th').addEventListener('input',e=>{ thick=+e.target.value; $('v-th').textContent=thick.toFixed(2); });
+$('s-n').addEventListener('input',e=>{ nIdx=+e.target.value; $('v-n').textContent=nIdx.toFixed(2); });
+$('c-eyebox').addEventListener('change',e=>eyebox=e.target.checked);
+$('c-rgb').addEventListener('change',e=>rgb=e.target.checked);
+$('c-real').addEventListener('change',e=>real=e.target.checked);
+$('c-photon').addEventListener('change',e=>photon=e.target.checked);
+$('c-labels').addEventListener('change',e=>labels=e.target.checked);
+document.querySelectorAll('#seg-view button').forEach(b=>b.addEventListener('click',()=>{ view=b.dataset.v;
+  document.querySelectorAll('#seg-view button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); }));
+$('panel-toggle').addEventListener('click', ()=>{ const b=$('panel-body'); const open=b.style.display!=='none';
+  b.style.display=open?'none':''; $('panel-toggle').setAttribute('aria-expanded',String(!open));
+  $('panel-toggle').innerHTML=open?'Controls &#9656;':'Controls &#9662;'; });
+
+// ---- drawing helpers -------------------------------------------------------
+function line(a,b,color,w,dash){ ctx.strokeStyle=color; ctx.lineWidth=w||1; ctx.setLineDash(dash||[]);
+  ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); ctx.setLineDash([]); }
+function poly(pts,color,w){ ctx.strokeStyle=color; ctx.lineWidth=w||1; ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]); ctx.stroke(); }
+function dot(p,r,color){ ctx.fillStyle=color; ctx.beginPath(); ctx.arc(p[0],p[1],r,0,7); ctx.fill(); }
+function text(t,x,y,color,size,align){ ctx.fillStyle=color||'#9fb0c0'; ctx.font=`600 ${size||11}px ui-monospace,monospace`;
+  ctx.textAlign=align||'left'; ctx.textBaseline='middle'; ctx.fillText(t,x,y); ctx.textAlign='left'; }
+function grating(x0,x1,y,up,color){ ctx.strokeStyle=color; ctx.lineWidth=1; const n=Math.floor((x1-x0)/5);
+  for(let i=0;i<=n;i++){ const x=x0+i*5; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+ (up?-3:3), y+(up?-6:6)); ctx.stroke(); } }
+
+// compute the TIR zig-zag bounce points inside the waveguide
+function zigzag(alpha, top, bot, xStart, xEnd){
+  const step=(bot-top)*Math.tan(alpha);          // horizontal advance per top<->bottom bounce
+  const pts=[[xStart,top]]; let x=xStart, atTop=true;
+  while(x<xEnd && pts.length<400){ x+=step; atTop=!atTop; pts.push([x, atTop?top:bot]); }
+  return {pts, step};
+}
+
+// ---- one waveguide layer (a colour) ----------------------------------------
+function drawLayer(yc, col, colorForField, isPrimary){
+  const th=Math.max(6, 16*thick);
+  const top=yc-th/2, bot=yc+th/2;
+  const xL=W*0.15, xR=W*0.87;
+  const xIn0=xL, xIn1=xL+W*0.09;                  // in-coupling grating
+  const xOut0=W*0.55, xOut1=W*0.84;               // out-coupling grating
+  // slab
+  ctx.fillStyle='rgba(120,170,220,0.06)'; ctx.fillRect(xL,top,xR-xL,th);
+  line([xL,top],[xR,top],'#3a4b5e',1); line([xL,bot],[xR,bot],'#3a4b5e',1);
+  grating(xIn0,xIn1,top,true,'#4fd6e0'); grating(xOut0,xOut1,bot,false,'#5ef0c8');
+
+  // critical + TIR angle (from surface NORMAL); larger field -> larger propagation angle
+  const critical=Math.asin(1/nIdx);
+  const alpha=Math.min(84*D2R, Math.max(critical+2*D2R, 58*D2R + field*0.6*D2R + colorForField));
+  const xInC=(xIn0+xIn1)/2;
+
+  // input beam from the light engine to the in-coupling point (collimated, at field angle)
+  const eng=[W*0.055, yc]; const inPt=[xInC, top];
+  if(isPrimary || rgb){
+    const fa=field*D2R;
+    const beamOff=[-Math.cos(fa)*46, -Math.sin(fa)*46];
+    line([inPt[0]+beamOff[0], inPt[1]+beamOff[1]], inPt, col, 2);          // one collimated ray
+    line([inPt[0]+beamOff[0]-8*Math.sin(fa), inPt[1]+beamOff[1]+8*Math.cos(fa)], [inPt[0]-8*Math.sin(fa),inPt[1]+8*Math.cos(fa)], col, 1); // a parallel partner (collimated bundle)
+  }
+
+  // TIR zig-zag
+  const {pts,step}=zigzag(alpha, top, bot, xInC, xR);
+  poly(pts, col, 1.6);
+
+  // out-coupling: at bottom bounces within the out region, eject toward the eye at the field angle
+  const eye=[W*0.70, H*0.86]; const pupilR=Math.max(14, H*0.03);
+  const fa=field*D2R;                                   // exit angle from vertical (eye axis)
+  const exits=[];
+  for(let i=0;i<pts.length;i++){ const p=pts[i];
+    if(Math.abs(p[1]-bot)<0.5 && p[0]>=xOut0 && p[0]<=xOut1){
+      const ex=[p[0]+(eye[1]-bot)*Math.tan(fa), eye[1]];
+      exits.push({from:p, to:ex}); if(!eyebox) break;   // one beam if eyebox off
+    }
+  }
+  const alphaCol = col;
+  for(const e of exits){ ctx.globalAlpha=0.9; line(e.from, e.to, alphaCol, 1.4); ctx.globalAlpha=1; }
+
+  // photon animation along: engine -> inPt -> zigzag -> a chosen exit -> pupil
+  if(photon && isPrimary){
+    const path=[eng, inPt].concat(pts.slice(1));
+    const chosen = exits[Math.min(exits.length-1, Math.floor(exits.length/2))];
+    if(chosen){ // truncate path at the chosen exit bounce, then to eye
+      const idx=path.findIndex(p=>p===chosen.from);
+      const upto = idx>0? path.slice(0, idx+1) : path;
+      const full = upto.concat([chosen.to]);
+      drawPhotons(full, col);
+    }
+  }
+  return {top,bot,alpha,critical,exits,eye,pupilR,xOut0,xOut1};
+}
+
+function pathLen(pts){ let L=0; for(let i=1;i<pts.length;i++) L+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]); return L; }
+function pointAt(pts,s){ for(let i=1;i<pts.length;i++){ const d=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+  if(s<=d){ const t=d?s/d:0; return [pts[i-1][0]+(pts[i][0]-pts[i-1][0])*t, pts[i-1][1]+(pts[i][1]-pts[i-1][1])*t]; } s-=d; } return pts[pts.length-1]; }
+function drawPhotons(pts,col){ const L=pathLen(pts); const N=7; for(let k=0;k<N;k++){ const s=((tAnim*0.9 + k/N)%1)*L; dot(pointAt(pts,s),2.6,'#eaf6ff'); } }
+
+// ---- render ----------------------------------------------------------------
+function hatch(x0,y0,x1,y1,color,dir){ ctx.save(); ctx.beginPath(); ctx.rect(x0,y0,x1-x0,y1-y0); ctx.clip();
+  ctx.strokeStyle=color; ctx.globalAlpha=0.22; ctx.lineWidth=1; const st=8;
+  if(dir==='v'){ for(let x=x0;x<x1;x+=st){ ctx.beginPath(); ctx.moveTo(x,y0); ctx.lineTo(x,y1); ctx.stroke(); } }
+  else { for(let x=x0-(y1-y0);x<x1;x+=st){ ctx.beginPath(); ctx.moveTo(x,y0); ctx.lineTo(x+(y1-y0),y1); ctx.stroke(); } }
+  ctx.globalAlpha=1; ctx.restore(); }
+
+function arrowH(y,x0,x1,color,lbl){ line([x0,y],[x1,y],color,1.4);
+  ctx.strokeStyle=color; ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x1-6,y-4); ctx.moveTo(x1,y); ctx.lineTo(x1-6,y+4);
+  ctx.moveTo(x0,y); ctx.lineTo(x0+6,y-4); ctx.moveTo(x0,y); ctx.lineTo(x0+6,y+4); ctx.stroke();
+  if(lbl) text(lbl,(x0+x1)/2,y-9,color,10,'center'); }
+function arrowV(x,y0,y1,color,lbl){ line([x,y0],[x,y1],color,1.4);
+  ctx.strokeStyle=color; ctx.beginPath(); ctx.moveTo(x,y1); ctx.lineTo(x-4,y1-6); ctx.moveTo(x,y1); ctx.lineTo(x+4,y1-6);
+  ctx.moveTo(x,y0); ctx.lineTo(x-4,y0+6); ctx.moveTo(x,y0); ctx.lineTo(x+4,y0+6); ctx.stroke();
+  if(lbl){ ctx.save(); ctx.translate(x-9,(y0+y1)/2); ctx.rotate(-Math.PI/2); text(lbl,0,0,color,10,'center'); ctx.restore(); } }
+
+// FRONT VIEW: two-stage exit-pupil expansion (in-couple -> fold grating -> out-couple)
+function drawFront(){
+  const px0=W*0.26, px1=W*0.82, py0=H*0.15, py1=H*0.86;
+  ctx.fillStyle='rgba(120,170,220,0.05)'; ctx.fillRect(px0,py0,px1-px0,py1-py0);
+  ctx.strokeStyle='#3a4b5e'; ctx.lineWidth=1; ctx.strokeRect(px0,py0,px1-px0,py1-py0);
+  const icS=26, icX=px0+30, icY=py0+26;
+  const foldY0=py0+2, foldY1=py0+(py1-py0)*0.17, foldMidY=(foldY0+foldY1)/2;
+  const ocY0=foldY1+10, ocY1=py1-4;
+  // fold grating (top strip, right of IC) + out-coupler (main region)
+  ctx.fillStyle='rgba(79,214,224,0.08)'; ctx.fillRect(icX+icS, foldY0, px1-(icX+icS)-4, foldY1-foldY0);
+  hatch(icX+icS, foldY0, px1-4, foldY1, '#4fd6e0','d');
+  ctx.fillStyle='rgba(94,240,200,0.06)'; ctx.fillRect(px0+4, ocY0, px1-px0-8, ocY1-ocY0);
+  hatch(px0+4, ocY0, px1-4, ocY1, '#5ef0c8','v');
+  // in-coupler + light engine
+  ctx.fillStyle='#12242a'; ctx.fillRect(icX,icY,icS,icS); ctx.strokeStyle='#8ee6ff'; ctx.lineWidth=1.4; ctx.strokeRect(icX,icY,icS,icS);
+  const eng=[px0-46, icY+icS/2]; ctx.fillStyle='#1c2530'; ctx.fillRect(eng[0]-10,eng[1]-12,16,24);
+  line([eng[0]+6,eng[1]],[icX,icY+icS/2],'#ffd166',2);
+  ctx.strokeStyle='#ffd166'; ctx.beginPath(); ctx.arc(icX+icS/2,icY+icS/2,4,0,7); ctx.stroke();   // small INPUT pupil
+
+  const N=eyebox?6:1, M=eyebox?5:1;
+  const foldXs=[]; for(let i=0;i<N;i++) foldXs.push(icX+icS + (px1-(icX+icS)-8)*((i+0.5)/N));
+  const ocYs=[]; for(let j=0;j<M;j++) ocYs.push(ocY0 + (ocY1-ocY0)*((j+0.6)/(M+0.1)));
+  // stage 1: beam runs right along the fold grating, replicating downward (horizontal expansion)
+  line([icX+icS, foldMidY],[px1-8, foldMidY], '#8ee6ff', 2);
+  for(const fx of foldXs){ line([fx,foldMidY],[fx,ocY1-4],'rgba(94,240,200,0.45)',1); }
+  // stage 2: exit pupils (2D grid) — each ejects toward the eye (out of page)
+  for(const fx of foldXs) for(const oy of ocYs){ ctx.fillStyle='rgba(94,240,200,0.30)'; ctx.strokeStyle='#5ef0c8'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(fx,oy,5,0,7); ctx.fill(); ctx.stroke(); dot([fx,oy],1.4,'#eaf6ff'); }
+  // eye "out of page" marker at centre of the eyebox
+  const ec=[(px0+px1)/2, (ocY0+ocY1)/2];
+  ctx.strokeStyle='#c9d4e0'; ctx.lineWidth=1.2; ctx.beginPath(); ctx.arc(ec[0],ec[1],13,0,7); ctx.stroke(); dot(ec,3,'#c9d4e0');
+
+  // photons: engine -> IC -> along fold -> down -> exit
+  if(photon){ const fx=foldXs[Math.floor(N/2)], oy=ocYs[Math.floor(M/2)];
+    drawPhotons([eng,[icX+icS/2,icY+icS/2],[icX+icS,foldMidY],[fx,foldMidY],[fx,oy]], '#5ef0c8'); }
+
+  if(labels){
+    text('light engine', eng[0], icY-18,'#9fb0c0',10,'center');
+    text('in-coupler', icX+icS/2, icY+icS+12,'#8ee6ff',10,'center');
+    text('input pupil (small)', icX+icS/2, icY+icS+26,'#ffd166',9,'center');
+    text('① fold grating — horizontal expansion', (icX+icS+px1)/2, foldY0-9,'#4fd6e0',11,'center');
+    text('② out-coupler — vertical expansion + eject to eye', (px0+px1)/2, ocY1+16,'#5ef0c8',11,'center');
+    text('eyebox = '+N+'×'+M+' replicated pupils', (px0+px1)/2, ocY1+30,'#9fb0c0',10,'center');
+    text('eye (out of page)', ec[0], ec[1]-19,'#9fb0c0',9,'center');
+    arrowH(foldY1+ (ocY0-foldY1)/2, foldXs[0], foldXs[N-1]||foldXs[0]+30, '#4fd6e0','× horizontal');
+    arrowV(px1-2, ocYs[0], ocYs[M-1]||ocYs[0]+30, '#5ef0c8','× vertical');
+  }
+  $('h-field').textContent=field.toFixed(0)+'°'; $('h-tir').textContent='—'; $('h-crit').textContent='—';
+  $('h-exit').textContent=(N*M)+' pupils';
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+  if(sweep){ sweepPhase+=0.01; field=Math.sin(sweepPhase)*18; $('s-field').value=field.toFixed(1); $('v-field').textContent=field.toFixed(0)+'°'; }
+  tAnim=(tAnim+0.008)%1;
+  if(view==='front'){ drawFront(); requestAnimationFrame(render); return; }
+
+  const ycMain=H*0.40;
+  // light engine (microdisplay + collimating lens)
+  const eng=[W*0.055, ycMain];
+  ctx.fillStyle='#1c2530'; ctx.fillRect(eng[0]-26, eng[1]-24, 20, 48);            // display module
+  ctx.strokeStyle='#5ef0c8'; for(let i=-2;i<=2;i++){ line([eng[0]-24,eng[1]+i*8],[eng[0]-8,eng[1]+i*8],'#2ec5ff',1); } // pixels
+  ctx.strokeStyle='#8ee6ff'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.ellipse(eng[0]+2, eng[1], 5, 22, 0, 0, 7); ctx.stroke(); // lens
+
+  // real-world light passing straight through to the eye (see-through)
+  const eye=[W*0.70, H*0.86];
+  if(real){ for(let i=0;i<7;i++){ const x=W*(0.30+i*0.06); line([x, H*0.06],[x, H*0.80],'rgba(150,165,180,0.30)',1,[2,6]); }
+    text('real world', W*0.32, H*0.045, 'rgba(150,165,180,0.7)',11); }
+
+  // waveguide layer(s)
+  let info;
+  if(rgb){
+    const colsRGB=[['#ff5a5a', 6*D2R],['#5ef0c8', 0],['#5a9bff', -6*D2R]];   // R,G,B: different diffraction angles
+    colsRGB.forEach((c,i)=>{ const yc=ycMain + (i-1)*Math.max(24,20*thick*1.4);
+      const r=drawLayer(yc, c[0], c[1], i===1); if(i===1) info=r; });
+  } else {
+    info=drawLayer(ycMain, '#5ef0c8', 0, true);
+  }
+
+  // eye + focusing of the collimated exit beams to a retinal point
+  drawEye(info);
+
+  if(labels){
+    text('light engine', eng[0]-10, ycMain-40, '#9fb0c0',11,'center');
+    text('in-couple grating', W*0.195, info.top-14, '#4fd6e0',11,'center');
+    text('TIR propagation', W*0.40, info.top-12, '#8ee6ff',11,'center');
+    text('out-couple grating (eyebox)', W*0.695, info.bot+16, '#5ef0c8',11,'center');
+  }
+
+  // HUD
+  $('h-field').textContent=field.toFixed(0)+'°';
+  $('h-tir').textContent=(info.alpha*R2D).toFixed(0)+'°';
+  $('h-crit').textContent=(info.critical*R2D).toFixed(0)+'°';
+  $('h-exit').textContent=info.exits.length;
+  requestAnimationFrame(render);
+}
+
+function drawEye(info){
+  const eye=info.eye, eR=Math.max(26,H*0.075); const cx=eye[0], cy=eye[1]+eR*0.2;
+  // exit beams already drawn to y=eye[1]; draw eyeball + lens + retina + focus
+  ctx.strokeStyle='#c9d4e0'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.arc(cx,cy,eR,0,7); ctx.stroke();
+  // pupil/lens at top of eye (facing up toward the waveguide)
+  const lensY=cy-eR*0.86, pupilR=info.pupilR;
+  ctx.strokeStyle='#8ee6ff'; ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(cx,lensY,pupilR,6,0,0,7); ctx.stroke();
+  // retina focus point: parallel rays at field angle -> point offset by angle
+  const fa=field*D2R; const foc=[cx + Math.tan(fa)*eR*1.1, cy+eR*0.82];
+  // draw the collected exit beams refracting through the lens to the focus (collimated -> point)
+  const collected=info.exits.filter(e=>Math.abs(e.to[0]-cx)<pupilR*1.3);
+  const use = collected.length?collected:info.exits.slice(-2);
+  ctx.strokeStyle='rgba(94,240,200,0.9)'; ctx.lineWidth=1.2;
+  for(const e of use){ const hit=[Math.max(cx-pupilR,Math.min(cx+pupilR,e.to[0])), lensY];
+    ctx.beginPath(); ctx.moveTo(hit[0],hit[1]); ctx.lineTo(foc[0],foc[1]); ctx.stroke(); }
+  dot(foc,3,'#ffd166');
+  if(labels){ text('eye', cx+eR+6, cy, '#9fb0c0',11); text('retinal image', foc[0]+8, foc[1], '#ffd166',10); text('eyebox', cx, lensY-14,'#5ef0c8',10,'center'); }
+}
+
+render();
+</script>
+</body>
+</html>

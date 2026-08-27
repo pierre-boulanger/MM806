@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Eye-Tracked Autostereoscopic — MM806</title>
+<style>
+  :root{--bg:#070b12;--panel:#151b24;--line:#232c38;--ink:#c9d4e0;--ink-dim:#6b7888;--signal:#4fd6e0;--hud:#5ef0c8;--warn:#ffd166;--L:#2ec5ff;--R:#ff5aa8;--red:#ff6b6b;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;}
+  #stage{position:fixed;inset:0;display:block;touch-action:none;cursor:ew-resize;}
+  .overlay{position:fixed;z-index:10;pointer-events:none;}
+  .masthead{top:0;left:0;padding:16px 18px;}
+  .masthead .course{font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.22em;color:var(--signal);text-transform:uppercase;}
+  .masthead .title{margin-top:6px;font-size:15px;font-weight:600;}
+  .masthead .sub{margin-top:2px;font-size:12px;color:var(--ink-dim);}
+  .hud{top:0;right:0;padding:14px 18px;text-align:right;font:500 11px/1.7 ui-monospace,Menlo,monospace;color:var(--ink-dim);}
+  .hud b{color:var(--hud);font-weight:600;}
+  .hud .ok{color:var(--hud);} .hud .bad{color:var(--red);} .hud .warn{color:var(--warn);}
+  .panel{top:82px;left:18px;width:216px;pointer-events:auto;background:rgba(21,27,36,.93);
+    border:1px solid var(--line);border-radius:10px;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);}
+  .panel-toggle{width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);
+    border-radius:10px 10px 0 0;color:var(--signal);font:600 10px/1 ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:10px 12px;cursor:pointer;}
+  .panel-body{padding:11px 12px 13px;display:flex;flex-direction:column;gap:12px;}
+  .grp{display:flex;flex-direction:column;gap:8px;}
+  .grp-title{font:600 10px/1 ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);}
+  .panel label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ink-dim);}
+  .panel label .val{color:var(--ink);font-family:ui-monospace,monospace;}
+  .panel label.row{flex-direction:row;align-items:center;gap:8px;color:var(--ink);}
+  .panel input[type=range]{width:100%;accent-color:var(--signal);margin:0;}
+  .panel input[type=checkbox]{accent-color:var(--signal);width:14px;height:14px;}
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .seg button{font:600 11px/1.2 ui-monospace,monospace;color:var(--ink-dim);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 4px;cursor:pointer;}
+  .seg button.active{border-color:var(--signal);color:var(--signal);background:#12242a;}
+  .status{left:0;bottom:0;padding:14px 18px;max-width:60ch;font-size:12px;line-height:1.5;color:var(--ink-dim);}
+  .status .pill{display:inline-block;font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;padding:4px 7px;border:1px solid var(--line);border-radius:5px;margin-right:6px;color:var(--ink);}
+  @media (max-width:600px){.panel{top:8px;left:8px;width:172px;}.masthead,.status{display:none;}}
+</style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <div class="overlay masthead">
+    <div class="course">MM806 · 3D DISPLAYS</div>
+    <div class="title">Eye-Tracked Autostereoscopic</div>
+    <div class="sub">Parallax barrier &middot; glasses-free 3D</div>
+  </div>
+
+  <div class="overlay hud" id="hud" aria-hidden="true">
+    <div>head X <b id="h-head">0.0 cm</b></div>
+    <div>barrier gap <b id="h-gap">96 mm</b></div>
+    <div>crosstalk <b id="h-xt">0%</b></div>
+    <div>view <b id="h-status">correct 3D</b></div>
+  </div>
+
+  <div class="overlay panel" id="panel">
+    <button class="panel-toggle" id="panel-toggle" aria-expanded="true">Controls &#9662;</button>
+    <div class="panel-body" id="panel-body">
+      <div class="grp">
+        <div class="grp-title">Eye tracking</div>
+        <div class="seg" id="seg-track">
+          <button data-t="on" class="active">On<br>(steer barrier)</button>
+          <button data-t="off">Off<br>(fixed barrier)</button>
+        </div>
+      </div>
+      <div class="grp">
+        <div class="grp-title">Viewer</div>
+        <label>Head position <span class="val" id="v-head">0.0 cm</span><input type="range" id="s-head" min="-10" max="10" step="0.2" value="0"></label>
+        <label class="row"><input type="checkbox" id="c-sway"> Auto-sway the head</label>
+        <label>Eye separation (IPD) <span class="val" id="v-ipd">63 mm</span><input type="range" id="s-ipd" min="52" max="74" step="1" value="63"></label>
+        <label>Viewing distance <span class="val" id="v-dist">60 cm</span><input type="range" id="s-dist" min="45" max="80" step="1" value="60"></label>
+      </div>
+      <div class="grp">
+        <div class="grp-title">Show</div>
+        <label class="row"><input type="checkbox" id="c-rays" checked> Light rays</label>
+        <label class="row"><input type="checkbox" id="c-eyeview" checked> What each eye sees</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay status">
+    <span class="pill">3D</span><span>Odd/even pixel columns carry the left and right images. A parallax barrier lets each eye see only its columns. Eye tracking shifts the barrier so the correct views follow your head; turn it off and move sideways to hit the crosstalk / pseudoscopic zones.</span>
+  </div>
+
+<script>
+// ===========================================================================
+//  MM806 — Eye-tracked autostereoscopic display (parallax barrier)
+//  Panel (z=0) has interleaved L/R pixel columns. A barrier (z=g) with slits
+//  sits in front. Geometry sends, through each slit, an L pixel to the left eye
+//  and the neighbouring R pixel to the right eye -> glasses-free stereo. The
+//  barrier only works at a "sweet spot"; move sideways and each eye starts
+//  seeing the wrong columns (crosstalk), or the views swap (pseudoscopic).
+//  EYE TRACKING measures the eyes and SHIFTS the slit pattern by headX*(g/D)
+//  so the sweet spot follows the viewer. Design gap: IPD*g/(D-g) = pixel pitch.
+// ===========================================================================
+const $=(id)=>document.getElementById(id);
+const cv=$('stage'), ctx=cv.getContext('2d');
+let W=0,H=0,dpr=1;
+function resize(){ dpr=Math.min(window.devicePixelRatio||1,2); W=window.innerWidth; H=window.innerHeight;
+  cv.width=W*dpr; cv.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
+window.addEventListener('resize', resize); resize();
+
+// ---- display parameters ----------------------------------------------------
+const N=18, pp=0.012, Wp=N*pp;                          // pixels, pitch, panel width (m)
+let IPD=0.063, D=0.60, headX=0, tracking=true, showRays=true, showEye=true, sway=false, swayT=0;
+function gap(){ return pp*D/(IPD+pp); }                  // design gap so eyes see adjacent pixels
+const xpix=i=>-Wp/2+(i+0.5)*pp;
+const ptype=i=>(i%2===0)?'L':'R';
+const nearest=xw=>{ const i=Math.round((xw+Wp/2)/pp-0.5); return (i<0||i>=N)?-1:i; };
+
+$('s-head').addEventListener('input',e=>{ headX=(+e.target.value)/100; $('v-head').textContent=(+e.target.value).toFixed(1)+' cm'; sway=false; $('c-sway').checked=false; });
+$('c-sway').addEventListener('change',e=>sway=e.target.checked);
+$('s-ipd').addEventListener('input',e=>{ IPD=(+e.target.value)/1000; $('v-ipd').textContent=e.target.value+' mm'; });
+$('s-dist').addEventListener('input',e=>{ D=(+e.target.value)/100; $('v-dist').textContent=e.target.value+' cm'; });
+$('c-rays').addEventListener('change',e=>showRays=e.target.checked);
+$('c-eyeview').addEventListener('change',e=>showEye=e.target.checked);
+document.querySelectorAll('#seg-track button').forEach(b=>b.addEventListener('click',()=>{ tracking=(b.dataset.t==='on');
+  document.querySelectorAll('#seg-track button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); }));
+$('panel-toggle').addEventListener('click',()=>{ const b=$('panel-body'); const open=b.style.display!=='none';
+  b.style.display=open?'none':''; $('panel-toggle').setAttribute('aria-expanded',String(!open));
+  $('panel-toggle').innerHTML=open?'Controls &#9656;':'Controls &#9662;'; });
+
+// drag the head horizontally
+let drag=false;
+cv.addEventListener('pointerdown',e=>{ drag=true; setHeadFromX(e.clientX); });
+cv.addEventListener('pointerup',()=>drag=false);
+cv.addEventListener('pointerleave',()=>drag=false);
+cv.addEventListener('pointermove',e=>{ if(drag) setHeadFromX(e.clientX); });
+function setHeadFromX(px){ const xw=(px-W/2)/sxScale(); headX=Math.max(-0.1,Math.min(0.1,xw)); sway=false; $('c-sway').checked=false;
+  $('s-head').value=(headX*100).toFixed(1); $('v-head').textContent=(headX*100).toFixed(1)+' cm'; }
+
+// ---- world -> screen -------------------------------------------------------
+function sxScale(){ return (W*0.82)/Wp; }
+const cx=()=>W/2, yPanel=()=>H*0.88, yEye=()=>H*0.13;
+const SX=xw=>cx()+xw*sxScale();
+const SY=z=>yPanel()+(z/D)*(yEye()-yPanel());
+
+function line(a,b,color,w,dash){ ctx.strokeStyle=color; ctx.lineWidth=w||1; ctx.setLineDash(dash||[]);
+  ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); ctx.setLineDash([]); }
+function text(t,x,y,c,s,al){ ctx.fillStyle=c||'#9fb0c0'; ctx.font=`600 ${s||11}px ui-monospace,monospace`; ctx.textAlign=al||'left'; ctx.textBaseline='middle'; ctx.fillText(t,x,y); ctx.textAlign='left'; }
+
+// ---- render ----------------------------------------------------------------
+function render(){
+  ctx.clearRect(0,0,W,H);
+  if(sway){ swayT+=0.012; headX=Math.sin(swayT)*0.075; $('s-head').value=(headX*100).toFixed(1); $('v-head').textContent=(headX*100).toFixed(1)+' cm'; }
+  const g=gap(), EL0=-IPD/2, EL=headX-IPD/2, ER=headX+IPD/2;
+  const slitFor=(i,eL)=>xpix(i)*(1-g/D)+eL*(g/D);
+  const fwd=(E,s)=>E+D/(D-g)*(s-E);
+
+  // build slits (one per L pixel) + forward trace to each eye
+  const seenL=new Array(N).fill(false), seenR=new Array(N).fill(false);
+  const rays=[]; let wrong=0,total=0, leftR=0,rightL=0;
+  const slitX=[];
+  for(let i=0;i<N;i+=2){ const s = slitFor(i, tracking?EL:EL0); slitX.push(s);
+    const pL=nearest(fwd(EL,s)), pR=nearest(fwd(ER,s));
+    if(pL>=0){ seenL[pL]=true; const okL=ptype(pL)==='L'; total++; if(!okL){wrong++; if(ptype(pL)==='R')leftR++;}
+      rays.push({eye:[SX(EL),yEye()], hit:[SX(fwd(EL,s)),yPanel()], slit:[SX(s),SY(g)], col: okL?'#2ec5ff':'#ff6b6b'}); }
+    if(pR>=0){ seenR[pR]=true; const okR=ptype(pR)==='R'; total++; if(!okR){wrong++; if(ptype(pR)==='L')rightL++;}
+      rays.push({eye:[SX(ER),yEye()], hit:[SX(fwd(ER,s)),yPanel()], slit:[SX(s),SY(g)], col: okR?'#ff5aa8':'#ff6b6b'}); }
+  }
+  const xtalk = total? Math.round(100*wrong/total) : 0;
+
+  // panel pixels
+  const pw=pp*sxScale()*0.9;
+  for(let i=0;i<N;i++){ const x=SX(xpix(i)), isL=ptype(i)==='L';
+    const seenCorrect = (isL&&seenL[i]) || (!isL&&seenR[i]);
+    const seenWrong = (isL&&seenR[i]) || (!isL&&seenL[i]);
+    ctx.fillStyle = isL ? (seenCorrect?'#2ec5ff':'#17567a') : (seenCorrect?'#ff5aa8':'#7a2a55');
+    ctx.fillRect(x-pw/2, yPanel(), pw, 18);
+    if(seenWrong){ ctx.strokeStyle='#ff6b6b'; ctx.lineWidth=2; ctx.strokeRect(x-pw/2, yPanel(), pw, 18); }
+    text(isL?'L':'R', x, yPanel()+9, isL?'#04222a':'#2a0713', 9, 'center');
+  }
+  text('pixel panel (interleaved L / R columns)', cx(), yPanel()+30, '#9fb0c0',11,'center');
+
+  // parallax barrier + slits
+  const by=SY(g); ctx.fillStyle='#20303f'; ctx.fillRect(SX(-Wp/2), by-4, Wp*sxScale(), 8);
+  const sw=pp*0.42*sxScale();
+  for(const s of slitX){ ctx.clearRect(SX(s)-sw/2, by-4, sw, 8); ctx.fillStyle='#5ef0c8'; ctx.fillRect(SX(s)-sw/2, by-5, sw, 2); }
+  text('parallax barrier'+(tracking?' (steered by tracker)':' (fixed)'), SX(-Wp/2), by-12, tracking?'#5ef0c8':'#ffd166',11);
+
+  // rays
+  if(showRays) for(const r of rays){ line(r.eye, r.hit, r.col, 1.1); }
+
+  // eyes / head
+  const hy=yEye();
+  ctx.fillStyle='#26303c'; ctx.beginPath(); ctx.ellipse(SX(headX), hy+6, 62, 30, 0, 0, 7); ctx.fill();
+  for(const [ex,col,lab] of [[EL,'#2ec5ff','L'],[ER,'#ff5aa8','R']]){
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(SX(ex), hy, 9, 0, 7); ctx.fill();
+    ctx.fillStyle='#081018'; ctx.beginPath(); ctx.arc(SX(ex), hy, 4, 0, 7); ctx.fill();
+    text(lab+' eye', SX(ex), hy-16, col, 10,'center');
+  }
+
+  // eye-tracker sensor
+  const cam=[cx(), H*0.045];
+  ctx.fillStyle=tracking?'#12242a':'#1a1e26'; ctx.strokeStyle=tracking?'#5ef0c8':'#3a4b5e'; ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.roundRect? ctx.roundRect(cam[0]-20,cam[1]-11,40,22,4):ctx.rect(cam[0]-20,cam[1]-11,40,22); ctx.fill(); ctx.stroke();
+  ctx.fillStyle=tracking?'#5ef0c8':'#3a4b5e'; ctx.beginPath(); ctx.arc(cam[0],cam[1],6,0,7); ctx.fill();
+  text('eye tracker', cam[0], cam[1]-20, tracking?'#5ef0c8':'#6b7888',10,'center');
+  if(tracking){ line(cam,[SX(EL),hy],'#5ef0c8',1,[3,4]); line(cam,[SX(ER),hy],'#5ef0c8',1,[3,4]); }
+
+  // what each eye sees (bars)
+  if(showEye){ const bw=16, gapb=4, y0=H*0.20;
+    drawEyeBar(W*0.06, y0, 'Left eye receives', slitX.map(s=>nearest(fwd(EL,s))), 'L');
+    drawEyeBar(W*0.06, y0+46, 'Right eye receives', slitX.map(s=>nearest(fwd(ER,s))), 'R'); }
+
+  // HUD
+  $('h-head').textContent=(headX*100).toFixed(1)+' cm'; $('h-gap').textContent=(g*1000).toFixed(0)+' mm';
+  $('h-xt').textContent=xtalk+'%';
+  let st=$('h-status'); if(xtalk<=6){ st.textContent='correct 3D'; st.className='ok'; }
+  else if(leftR>total*0.2 && rightL>total*0.2){ st.textContent='pseudoscopic (reversed)'; st.className='bad'; }
+  else { st.textContent='crosstalk / ghosting'; st.className='warn'; }
+
+  requestAnimationFrame(render);
+}
+function drawEyeBar(x,y,label,pix,want){ text(label, x, y-9, '#9fb0c0',10);
+  const bw=15, gp=3; for(let k=0;k<pix.length;k++){ const p=pix[k]; const xx=x+k*(bw+gp);
+    let c='#2a3441'; if(p>=0) c=ptype(p)==='L'?'#2ec5ff':'#ff5aa8';
+    ctx.fillStyle=c; ctx.fillRect(xx,y,bw,14);
+    if(p>=0 && ptype(p)!==want){ ctx.strokeStyle='#ff6b6b'; ctx.lineWidth=2; ctx.strokeRect(xx,y,bw,14); } } }
+render();
+</script>
+</body>
+</html>

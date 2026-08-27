@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Quaternion Explorer — MM-806</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --bg:#0a1018; --panel:#0f1825; --panel-2:#13202f;
+    --line:#1d2c41; --line-soft:#172435;
+    --ink:#e8eef7; --muted:#8597b3; --faint:#5b6c87;
+    --cyan:#36cfd0; --amber:#f2b441; --rose:#e36a99; --red:#ff5a5a;
+    --ax-x:#ff6b6b; --ax-y:#5fd17a; --ax-z:#5fa6ff;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(1200px 700px at 78% -8%, #14233a 0%, transparent 60%),var(--bg);
+    color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5;}
+  .wrap{max-width:1280px;margin:0 auto;padding:28px 22px 56px}
+  header.masthead{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;
+    border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:22px;}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--cyan);}
+  h1{font-size:clamp(24px,3vw,34px);margin:6px 0 0;font-weight:650;letter-spacing:-.01em}
+  h1 .q{color:var(--amber)}
+  .sub{color:var(--muted);font-size:14px;max-width:46ch}
+  .masthead .meta{margin-left:auto;text-align:right;font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.06em;line-height:1.7}
+  .grid{display:grid;grid-template-columns:1.15fr .85fr;gap:20px}
+  @media (max-width:920px){.grid{grid-template-columns:1fr}}
+  .stage{position:relative;background:linear-gradient(180deg,#0c1521,#0a121d);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;min-height:420px;}
+  #view{display:block;width:100%;height:480px;touch-action:none;cursor:grab}
+  #view:active{cursor:grabbing}
+  .stage .hint{position:absolute;left:14px;bottom:12px;font-family:var(--mono);font-size:10.5px;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--faint);pointer-events:none}
+  .legend{position:absolute;top:12px;left:14px;display:flex;gap:14px;flex-wrap:wrap;
+    font-family:var(--mono);font-size:11px;color:var(--muted);pointer-events:none}
+  .legend i{display:inline-block;width:10px;height:2px;vertical-align:middle;margin-right:6px}
+  .stagelabels{position:absolute;inset:0;pointer-events:none}
+  .stagelabels span{position:absolute;top:50%;transform:translateY(-120px);font-family:var(--mono);
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .stagelabels .l{left:11%} .stagelabels .r{right:9%;text-align:right}
+  .stagelabels .l b{color:var(--red)} .stagelabels .r b{color:var(--cyan)}
+  .lockbadge{position:absolute;top:46px;left:50%;transform:translateX(-50%);
+    font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    color:#1a0c0c;background:var(--red);padding:6px 12px;border-radius:6px;font-weight:700;
+    box-shadow:0 0 22px rgba(255,90,90,.5);pointer-events:none}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .formula{background:linear-gradient(180deg,var(--panel-2),#101b29);border:1px solid var(--line);
+    border-radius:12px;padding:16px 18px;margin-bottom:16px}
+  .formula .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+  .formula .eq{font-family:var(--mono);font-size:16px;color:var(--ink);line-height:1.9}
+  .formula .eq .c{color:var(--cyan)} .formula .eq .a{color:var(--amber)}
+  .formula .sub-eq{font-family:var(--mono);font-size:14px;color:var(--muted);margin-top:6px;word-spacing:1px}
+  .formula .sub-eq b{color:var(--ink);font-weight:600}
+  .tabs{display:flex;gap:4px;background:#0b1320;border:1px solid var(--line);border-radius:9px;padding:4px;margin-bottom:16px}
+  .tabs button{flex:1;appearance:none;border:0;background:transparent;color:var(--muted);font-family:var(--mono);
+    font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;padding:9px 6px;border-radius:6px;cursor:pointer;transition:.15s}
+  .tabs button[aria-selected="true"]{background:var(--panel-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+  .tabs button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .ctl{margin:14px 0}
+  .ctl .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .ctl label{font-size:12.5px;color:var(--muted);letter-spacing:.02em}
+  .ctl .val{font-family:var(--mono);font-size:13px;color:var(--ink)}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--line);border-radius:3px;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+    background:var(--cyan);border:2px solid #07101a;cursor:pointer;box-shadow:0 0 0 1px var(--cyan)}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--cyan);border:2px solid #07101a;cursor:pointer}
+  input[type=range].amber::-webkit-slider-thumb{background:var(--amber);box-shadow:0 0 0 1px var(--amber)}
+  input[type=range].amber::-moz-range-thumb{background:var(--amber)}
+  input[type=range].red::-webkit-slider-thumb{background:var(--red);box-shadow:0 0 0 1px var(--red)}
+  input[type=range].red::-moz-range-thumb{background:var(--red)}
+  input[type=range]:focus-visible{box-shadow:0 0 0 2px var(--cyan)}
+  .readout{font-family:var(--mono);font-size:13px;background:#0b1320;border:1px solid var(--line-soft);border-radius:9px;padding:12px 14px}
+  .readout .qrow{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:5px 0}
+  .readout .qrow + .qrow{border-top:1px dashed var(--line-soft)}
+  .readout .k{color:var(--cyan);font-weight:600}
+  .readout .bar{height:6px;border-radius:4px;background:#142133;position:relative;overflow:hidden}
+  .readout .bar > span{position:absolute;top:0;bottom:0;background:var(--cyan);border-radius:4px;transition:width .05s linear,left .05s linear}
+  .readout .v{color:var(--ink);text-align:right;min-width:7ch}
+  .normline{display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .normline b{color:var(--cyan)}
+  .opts{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+  .chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);background:#0b1320;border:1px solid var(--line);border-radius:7px;padding:7px 10px;cursor:pointer}
+  .chip input{accent-color:var(--amber)}
+  .btn{appearance:none;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);
+    background:#0b1320;border:1px solid var(--line);border-radius:7px;padding:8px 12px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--cyan);color:#fff}
+  .btn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .btn.b{border-color:#33425c} .btn.rose:hover{border-color:var(--rose)} .btn.red:hover{border-color:var(--red)}
+  .slerp-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6px}
+  .scard{background:#0b1320;border:1px solid var(--line);border-radius:9px;padding:12px}
+  .scard h4{margin:0 0 8px;font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .scard.A h4 b{color:var(--cyan)} .scard.B h4 b{color:var(--rose)}
+  .scard .qv{font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .subhead{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);
+    margin:18px 0 4px;padding-top:14px;border-top:1px solid var(--line)}
+  .note{font-size:13.5px;color:var(--muted);margin-top:2px}
+  .note b{color:var(--ink);font-weight:600} .note .term{color:var(--amber)} .note .bad{color:var(--red)}
+  details{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  summary{cursor:pointer;font-size:12.5px;color:var(--cyan);font-family:var(--mono);letter-spacing:.04em;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary:before{content:"▸ ";color:var(--faint)}
+  details[open] summary:before{content:"▾ "}
+  details p{font-size:13.5px;color:var(--muted);margin:10px 0 0}
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:14px;font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em}
+  .hidden{display:none !important}
+  @media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div>
+      <div class="eyebrow">MM-806 · Chapter 2 companion</div>
+      <h1>The <span class="q">Quaternion</span> Explorer</h1>
+      <p class="sub">A rotation is an axis and an angle. A quaternion stores that pair using
+      <em>half</em> the angle — and, unlike three Euler angles, it never locks up.</p>
+    </div>
+    <div class="meta">AXIS–ANGLE → q<br/>q · v · q⁻¹<br/>unit sphere S³</div>
+  </header>
+
+  <div class="grid">
+    <div class="stage">
+      <div class="legend" id="legend"></div>
+      <canvas id="view"></canvas>
+      <div class="stagelabels hidden" id="stageLabels">
+        <span class="l"><b>Euler</b> · 3 gimbals</span>
+        <span class="r"><b>Quaternion</b></span>
+      </div>
+      <div class="lockbadge hidden" id="lockBadge">⚠ Gimbal lock — 1 DOF lost</div>
+      <div class="hint" id="hint">drag to orbit · the dart carries the body frame</div>
+    </div>
+
+    <div>
+      <div class="formula" id="formulaBox">
+        <div class="lbl">Half-angle construction</div>
+        <div class="eq">q = <span class="c">cos(θ/2)</span> + <span class="a">sin(θ/2)</span>·(x<span style="color:var(--ax-x)">î</span> + y<span style="color:var(--ax-y)">ĵ</span> + z<span style="color:var(--ax-z)">k̂</span>)</div>
+        <div class="sub-eq" id="subEq">q = <b>1.000</b> + <b>0.000</b>·( … )</div>
+      </div>
+
+      <div class="panel">
+        <div class="tabs" role="tablist">
+          <button id="tab-aa" role="tab" aria-selected="true">Axis &amp; Angle</button>
+          <button id="tab-sl" role="tab" aria-selected="false">SLERP</button>
+          <button id="tab-gl" role="tab" aria-selected="false">Gimbal Lock</button>
+        </div>
+
+        <!-- AXIS-ANGLE -->
+        <div id="pane-aa">
+          <div class="ctl"><div class="row"><label for="angle">Angle θ</label><span class="val" id="angleV">90°</span></div>
+            <input class="amber" type="range" id="angle" min="0" max="360" step="1" value="90"/></div>
+          <div class="ctl"><div class="row"><label for="ax">Axis · x</label><span class="val" id="axV">0.00</span></div>
+            <input type="range" id="ax" min="-1" max="1" step="0.01" value="0"/></div>
+          <div class="ctl"><div class="row"><label for="ay">Axis · y</label><span class="val" id="ayV">1.00</span></div>
+            <input type="range" id="ay" min="-1" max="1" step="0.01" value="1"/></div>
+          <div class="ctl"><div class="row"><label for="az">Axis · z</label><span class="val" id="azV">0.00</span></div>
+            <input type="range" id="az" min="-1" max="1" step="0.01" value="0"/></div>
+          <div class="readout" id="qReadout" aria-live="polite"></div>
+          <div class="opts">
+            <label class="chip"><input type="checkbox" id="negq"/> show −q (same rotation)</label>
+            <button class="btn" id="presetX">90° about x</button>
+            <button class="btn" id="presetXYZ">120° about (1,1,1)</button>
+          </div>
+          <div class="note" id="aaNote" style="margin-top:14px"></div>
+        </div>
+
+        <!-- SLERP -->
+        <div id="pane-sl" class="hidden">
+          <div class="slerp-cards">
+            <div class="scard A"><h4>Orientation <b>A</b></h4><div class="qv" id="qAtxt">—</div>
+              <button class="btn b" id="setA" style="margin-top:10px;width:100%">Set A = current</button></div>
+            <div class="scard B"><h4>Orientation <b>B</b></h4><div class="qv" id="qBtxt">—</div>
+              <button class="btn rose b" id="setB" style="margin-top:10px;width:100%">Set B = current</button></div>
+          </div>
+          <div class="ctl" style="margin-top:16px"><div class="row"><label for="tee">Interpolation t</label><span class="val" id="teeV">0.00</span></div>
+            <input class="amber" type="range" id="tee" min="0" max="1" step="0.005" value="0"/></div>
+          <div class="readout" id="slReadout" aria-live="polite"></div>
+          <div class="opts"><button class="btn" id="playSlerp">▶ sweep A → B</button><button class="btn b" id="swapAB">swap A ⇄ B</button></div>
+          <div class="note" id="slNote" style="margin-top:14px"></div>
+        </div>
+
+        <!-- GIMBAL LOCK -->
+        <div id="pane-gl" class="hidden">
+          <div class="note" style="margin-bottom:6px">Three nested rings build an orientation from
+          <b>heading → pitch → bank</b>. Drive the pitch toward ±90° and watch the outer and inner rings fall into the same plane.</div>
+          <div class="ctl"><div class="row"><label for="gHead">Heading (about y)</label><span class="val" id="gHeadV">0°</span></div>
+            <input type="range" id="gHead" min="-180" max="180" step="1" value="0"/></div>
+          <div class="ctl"><div class="row"><label for="gPitch">Pitch (about x)</label><span class="val" id="gPitchV">0°</span></div>
+            <input class="red" type="range" id="gPitch" min="-180" max="180" step="1" value="0"/></div>
+          <div class="ctl"><div class="row"><label for="gBank">Bank (about z)</label><span class="val" id="gBankV">0°</span></div>
+            <input type="range" id="gBank" min="-180" max="180" step="1" value="0"/></div>
+          <div class="opts"><button class="btn red" id="driveLock">drive pitch → 90°</button>
+            <button class="btn b" id="gReset">reset to 0</button></div>
+
+          <div class="subhead">Interpolation race · A → B</div>
+          <div class="note" style="margin-bottom:6px">Both darts start at A and end at B. The left rebuilds the pose by
+          <span class="bad">lerping the three angles</span>; the right <span class="term">slerps the quaternion</span>.</div>
+          <div class="opts" style="margin-top:0">
+            <button class="btn b" id="gSetA">Set A = current</button>
+            <button class="btn b" id="gSetB">Set B = current</button>
+            <button class="btn red" id="gPlay">▶ race A → B</button>
+          </div>
+          <div class="ctl" style="margin-top:14px"><div class="row"><label for="gT">Race position t</label><span class="val" id="gTV">0.00</span></div>
+            <input class="amber" type="range" id="gT" min="0" max="1" step="0.004" value="0"/></div>
+          <div class="note" id="glNote" style="margin-top:10px"></div>
+        </div>
+
+        <details>
+          <summary>Why quaternions, and not Euler angles?</summary>
+          <p>Three Euler angles can reach an orientation where two of the rotation axes line up and a degree of
+          freedom is lost — <span class="term">gimbal lock</span>. A unit quaternion never locks: every orientation
+          is one point on the unit sphere in four dimensions, and the shortest path between two of them is a clean arc.
+          That arc is exactly what <b>SLERP</b> traces, which is why head-tracking and animation blend orientations as
+          quaternions rather than as angle triples.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <footer>Adapted from MM-806 · Introduction to Virtual/Augmented Reality and Telepresence — P. Boulanger</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $=id=>document.getElementById(id);
+  const fmt=(n,d=3)=>(n>=0?" ":"")+n.toFixed(d);
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const DEG=Math.PI/180;
+
+  const canvas=$("view");
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  const scene=new THREE.Scene();
+  const cam=new THREE.PerspectiveCamera(42,1,0.1,100);
+  scene.add(new THREE.AmbientLight(0xbfd2f0,0.65));
+  const key=new THREE.DirectionalLight(0xffffff,0.9); key.position.set(4,6,5); scene.add(key);
+  const rim=new THREE.DirectionalLight(0x4a6fae,0.5); rim.position.set(-5,2,-4); scene.add(rim);
+
+  const grid=new THREE.GridHelper(10,20,0x24405f,0x172435); grid.position.y=-1.7; scene.add(grid);
+  const worldAxes=new THREE.Group();
+  function worldAxis(dir,color){
+    const m=new THREE.LineBasicMaterial({color,transparent:true,opacity:0.3});
+    const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),dir.clone().multiplyScalar(2.4)]);
+    worldAxes.add(new THREE.Line(g,m));
+  }
+  worldAxis(new THREE.Vector3(1,0,0),0xff6b6b);
+  worldAxis(new THREE.Vector3(0,1,0),0x5fd17a);
+  worldAxis(new THREE.Vector3(0,0,1),0x5fa6ff);
+  scene.add(worldAxes);
+
+  // ---- reusable dart that carries a body frame ----
+  function makeArrow(dir,color,len){
+    const g=new THREE.Group();
+    const shaftLen=len*0.78, headLen=len*0.22, r=0.035;
+    const mat=new THREE.MeshStandardMaterial({color,roughness:.5,metalness:.1});
+    const shaft=new THREE.Mesh(new THREE.CylinderGeometry(r,r,shaftLen,16),mat); shaft.position.y=shaftLen/2;
+    const head=new THREE.Mesh(new THREE.ConeGeometry(r*2.6,headLen,18),mat); head.position.y=shaftLen+headLen/2;
+    g.add(shaft,head);
+    g.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dir.clone().normalize()));
+    return g;
+  }
+  function makeDart(scale){
+    const body=new THREE.Group();
+    body.add(makeArrow(new THREE.Vector3(1,0,0),0xff6b6b,1.4));
+    body.add(makeArrow(new THREE.Vector3(0,1,0),0x5fd17a,1.4));
+    body.add(makeArrow(new THREE.Vector3(0,0,1),0x5fa6ff,1.4));
+    const matBody=new THREE.MeshStandardMaterial({color:0x9fb4d4,roughness:.45,metalness:.25});
+    const matNose=new THREE.MeshStandardMaterial({color:0xeef4ff,roughness:.4,metalness:.2});
+    const fuse=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.18,1.2,20),matBody);
+    fuse.rotation.x=Math.PI/2; fuse.position.z=0.2; body.add(fuse);
+    const nose=new THREE.Mesh(new THREE.ConeGeometry(0.12,0.5,20),matNose);
+    nose.rotation.x=Math.PI/2; nose.position.z=1.05; body.add(nose);
+    const wing=new THREE.Mesh(new THREE.BoxGeometry(1.5,0.04,0.42),matBody); wing.position.z=0.1; body.add(wing);
+    const fin=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.42,0.36),
+      new THREE.MeshStandardMaterial({color:0x36cfd0,roughness:.4,metalness:.2}));
+    fin.position.set(0,0.2,-0.25); body.add(fin);
+    if(scale) body.scale.setScalar(scale);
+    return body;
+  }
+
+  // primary dart (AA + SLERP)
+  const body=makeDart(1); scene.add(body);
+  const axisMat=new THREE.MeshStandardMaterial({color:0xf2b441,roughness:.35,emissive:0x3a2c08});
+  const axisGrp=new THREE.Group();
+  const axisRod=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,5,12),axisMat);
+  const axisTip=new THREE.Mesh(new THREE.ConeGeometry(0.08,0.24,16),axisMat); axisTip.position.y=2.5;
+  axisGrp.add(axisRod,axisTip); scene.add(axisGrp);
+
+  // ---- gimbal rig (Euler, left) + quaternion dart (right) ----
+  const ringColOK=0x3a597e, ringColLock=0xff5a5a;
+  function makeRing(R,axis){
+    const mat=new THREE.MeshStandardMaterial({color:ringColOK,roughness:.4,metalness:.3,
+      transparent:true,opacity:.92});
+    const mesh=new THREE.Mesh(new THREE.TorusGeometry(R,0.035,12,80),mat);
+    if(axis==="y") mesh.rotation.x=Math.PI/2;      // ring axis -> Y
+    else if(axis==="x") mesh.rotation.y=Math.PI/2; // ring axis -> X
+    // axis==="z": default, ring axis -> Z
+    return mesh;
+  }
+  const gimbalRoot=new THREE.Group(); gimbalRoot.position.x=-2.6;
+  const gOuter=new THREE.Group();  // heading about Y
+  const gMid=new THREE.Group();    // pitch about X
+  const gInner=new THREE.Group();  // bank about Z
+  const ringOuter=makeRing(1.7,"y");
+  const ringMid=makeRing(1.4,"x");
+  const ringInner=makeRing(1.1,"z");
+  gOuter.add(ringOuter); gMid.add(ringMid); gInner.add(ringInner);
+  gOuter.add(gMid); gMid.add(gInner);
+  const eulerDart=makeDart(0.62); gInner.add(eulerDart);
+  gimbalRoot.add(gOuter); scene.add(gimbalRoot);
+
+  const quatRoot=new THREE.Group(); quatRoot.position.x=2.6;
+  const quatDart=makeDart(0.78); quatRoot.add(quatDart); scene.add(quatRoot);
+
+  function setGimbalVisible(v){
+    gimbalRoot.visible=v; quatRoot.visible=v;
+    $("stageLabels").classList.toggle("hidden",!v);
+  }
+  setGimbalVisible(false);
+
+  // ---- orbit ----
+  let az=0.6, el=0.5, drag=false, px=0, py=0, Rcur=6.2, Rtarget=6.2;
+  function placeCam(){
+    cam.position.set(Rcur*Math.cos(el)*Math.sin(az),Rcur*Math.sin(el),Rcur*Math.cos(el)*Math.cos(az));
+    cam.lookAt(0,0,0);
+  }
+  canvas.addEventListener("pointerdown",e=>{drag=true;px=e.clientX;py=e.clientY;canvas.setPointerCapture(e.pointerId);});
+  canvas.addEventListener("pointermove",e=>{if(!drag)return;
+    az-=(e.clientX-px)*0.008; el+=(e.clientY-py)*0.008; el=Math.max(-1.3,Math.min(1.3,el)); px=e.clientX; py=e.clientY;});
+  canvas.addEventListener("pointerup",()=>drag=false);
+  canvas.addEventListener("pointercancel",()=>drag=false);
+  function resize(){const w=canvas.clientWidth,h=canvas.clientHeight||480;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}
+  window.addEventListener("resize",resize);
+
+  // ---- quaternion helpers ----
+  function unitAxis(){
+    let x=+$("ax").value,y=+$("ay").value,z=+$("az").value,n=Math.hypot(x,y,z);
+    if(n<1e-6){y=1;n=1;} return {x:x/n,y:y/n,z:z/n};
+  }
+  function quatFromAA(thetaDeg,a){const t=thetaDeg*DEG,s=Math.sin(t/2);return {w:Math.cos(t/2),x:a.x*s,y:a.y*s,z:a.z*s};}
+  // quaternion equal to the nested gimbal: Ry(head)*Rx(pitch)*Rz(bank)
+  function eulerToQuat(hDeg,pDeg,bDeg){
+    const qy=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),hDeg*DEG);
+    const qx=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),pDeg*DEG);
+    const qz=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),bDeg*DEG);
+    return qy.multiply(qx).multiply(qz);
+  }
+
+  let mode="aa";
+  let qA=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),0);
+  let qB=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI*0.66);
+  let curQuat=new THREE.Quaternion();
+  // gimbal race endpoints (angle triples) chosen to swing through the danger zone
+  let poseA={h:-150,p:78,b:0}, poseB={h:150,p:78,b:0};
+
+  function renderReadout(el,q,neg){
+    const sign=neg?-1:1, comps=[["w",q.w],["x",q.x],["y",q.y],["z",q.z]];
+    el.innerHTML=comps.map(([k,v])=>{
+      const val=sign*v, pct=Math.min(Math.abs(val),1)*50, left=val>=0?50:50-pct;
+      return '<div class="qrow"><span class="k">'+k+'</span><span class="bar"><span style="left:'+left+'%;width:'+pct+'%"></span></span><span class="v">'+fmt(val)+'</span></div>';
+    }).join("")+'<div class="normline"><span>‖q‖ = √(w²+x²+y²+z²)</span><b>'+Math.sqrt(q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z).toFixed(4)+'</b></div>';
+  }
+
+  function updateAA(){
+    const theta=+$("angle").value,a=unitAxis();
+    $("angleV").textContent=theta+"°";
+    $("axV").textContent=fmt(a.x,2).trim();$("ayV").textContent=fmt(a.y,2).trim();$("azV").textContent=fmt(a.z,2).trim();
+    const q=quatFromAA(theta,a),neg=$("negq").checked,half=theta/2;
+    $("subEq").innerHTML='q = <b>'+q.w.toFixed(3)+'</b> + <b>'+Math.sin(half*DEG).toFixed(3)+'</b>·( '+fmt(a.x,2).trim()+'î + '+fmt(a.y,2).trim()+'ĵ + '+fmt(a.z,2).trim()+'k̂ )';
+    renderReadout($("qReadout"),q,neg);
+    const s=neg?-1:1; curQuat.set(s*q.x,s*q.y,s*q.z,s*q.w); body.quaternion.copy(curQuat);
+    axisGrp.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(a.x,a.y,a.z)));
+    $("aaNote").innerHTML=neg
+      ? '<b>q and −q are the same rotation.</b> Every component flipped sign, yet the dart did not move — the two antipodal points map to one orientation. This <span class="term">double cover</span> is why blending code always picks the nearer of the two.'
+      : 'The scalar part <b>cos(θ/2)</b> is how much of "no rotation" remains; the vector part points along <span class="term">û</span> and grows as θ opens up. At θ = 0 the quaternion is <b>(1,0,0,0)</b> — the identity.';
+  }
+
+  function setQtext(){
+    $("qAtxt").textContent='('+fmt(qA.w,2)+', '+fmt(qA.x,2)+', '+fmt(qA.y,2)+', '+fmt(qA.z,2)+')';
+    $("qBtxt").textContent='('+fmt(qB.w,2)+', '+fmt(qB.x,2)+', '+fmt(qB.y,2)+', '+fmt(qB.z,2)+')';
+  }
+  function updateSlerp(){
+    const t=+$("tee").value;$("teeV").textContent=t.toFixed(2);
+    const q=new THREE.Quaternion().slerpQuaternions(qA,qB,t); body.quaternion.copy(q); axisGrp.visible=false;
+    renderReadout($("slReadout"),{w:q.w,x:q.x,y:q.y,z:q.z},false);
+    const dot=Math.min(1,Math.abs(qA.x*qB.x+qA.y*qB.y+qA.z*qB.z+qA.w*qB.w)),ang=2*Math.acos(dot)/DEG;
+    $("slNote").innerHTML='SLERP walks the <b>shortest arc</b> on the unit sphere from A to B — here about <b>'+ang.toFixed(0)+'°</b>. ‖q‖ stays <b>1.000</b> for every t, so no orientation is skewed or scaled. That constant-speed, always-valid arc is what a headset needs when it predicts where your head will be a few milliseconds from now.';
+  }
+
+  // ---- gimbal mode ----
+  let racing=false, raceStart=0, lastLock=false;
+  function setRingColor(c){[ringOuter,ringMid,ringInner].forEach(r=>r.material.color.setHex(c));}
+  function applyGimbal(h,p,b){
+    gOuter.rotation.set(0,h*DEG,0);
+    gMid.rotation.set(p*DEG,0,0);
+    gInner.rotation.set(0,0,b*DEG);
+    quatDart.quaternion.copy(eulerToQuat(h,p,b)); // identical static pose, stored as a quaternion
+  }
+  function lockAmount(p){ // 0..1, peaks at |p|=90
+    const d=Math.min(Math.abs(p-90),Math.abs(p+90),Math.abs(p-270),Math.abs(p+270));
+    return Math.max(0,1-d/12);
+  }
+  function refreshLockUI(p){
+    const amt=lockAmount(p), locked=amt>0.15;
+    const c=new THREE.Color(ringColOK).lerp(new THREE.Color(ringColLock),amt).getHex();
+    setRingColor(c);
+    $("lockBadge").classList.toggle("hidden",!locked);
+    return locked;
+  }
+  function updateGimbalManual(){
+    const h=+$("gHead").value,p=+$("gPitch").value,b=+$("gBank").value;
+    $("gHeadV").textContent=h+"°";$("gPitchV").textContent=p+"°";$("gBankV").textContent=b+"°";
+    applyGimbal(h,p,b);
+    const locked=refreshLockUI(p);
+    $("glNote").innerHTML=locked
+      ? '<span class="bad"><b>Locked.</b></span> The heading ring and the bank ring now spin about the <b>same vertical axis</b> — turning heading and turning bank do the identical thing, so one of the three controls is dead. The quaternion dart on the right holds the very same orientation, but it never had three stacked axes to collapse.'
+      : 'Each ring turns about its own axis. Tilt the pitch toward <b>±90°</b> to force the outer and inner rings into one plane.';
+  }
+  function runRace(t){
+    $("gT").value=t; $("gTV").textContent=t.toFixed(2);
+    // LEFT: linearly interpolate the three angles, rebuild by nested rotation
+    const h=lerp(poseA.h,poseB.h,t),p=lerp(poseA.p,poseB.p,t),b=lerp(poseA.b,poseB.b,t);
+    gOuter.rotation.set(0,h*DEG,0); gMid.rotation.set(p*DEG,0,0); gInner.rotation.set(0,0,b*DEG);
+    refreshLockUI(p);
+    // RIGHT: slerp the quaternions of A and B
+    const qa=eulerToQuat(poseA.h,poseA.p,poseA.b), qb=eulerToQuat(poseB.h,poseB.p,poseB.b);
+    quatDart.quaternion.copy(new THREE.Quaternion().slerpQuaternions(qa,qb,t));
+    $("glNote").innerHTML='<span class="bad">Left — angle-lerp:</span> swings the heading the long way around and dips through the lock zone, so the dart <b>tumbles and speeds up</b> mid-path. <span class="term">Right — SLERP:</span> one clean arc, constant speed, no singularity. Same endpoints, completely different journey.';
+  }
+
+  function setMode(m){
+    mode=m; const aa=m==="aa", sl=m==="sl", gl=m==="gl";
+    $("tab-aa").setAttribute("aria-selected",aa);$("tab-sl").setAttribute("aria-selected",sl);$("tab-gl").setAttribute("aria-selected",gl);
+    $("pane-aa").classList.toggle("hidden",!aa);$("pane-sl").classList.toggle("hidden",!sl);$("pane-gl").classList.toggle("hidden",!gl);
+    // scene visibility
+    body.visible=!gl; axisGrp.visible=aa; worldAxes.visible=!gl; setGimbalVisible(gl);
+    $("formulaBox").classList.toggle("hidden",gl);
+    $("lockBadge").classList.toggle("hidden",!gl);
+    $("hint").textContent=gl?"drag to orbit · left = 3-ring Euler gimbal · right = quaternion":"drag to orbit · the dart carries the body frame";
+    Rtarget=gl?9.2:6.2;
+    racing=false;
+    if(aa)updateAA(); else if(sl){setQtext();updateSlerp();} else {updateGimbalManual();}
+    if(gl)$("lockBadge").classList.add("hidden");
+  }
+  $("tab-aa").onclick=()=>setMode("aa");
+  $("tab-sl").onclick=()=>setMode("sl");
+  $("tab-gl").onclick=()=>setMode("gl");
+
+  // wiring: AA
+  ["angle","ax","ay","az"].forEach(id=>$(id).addEventListener("input",updateAA));
+  $("negq").addEventListener("change",updateAA);
+  $("presetX").onclick=()=>{$("angle").value=90;$("ax").value=1;$("ay").value=0;$("az").value=0;updateAA();};
+  $("presetXYZ").onclick=()=>{$("angle").value=120;$("ax").value=1;$("ay").value=1;$("az").value=1;updateAA();};
+  // wiring: SLERP
+  $("setA").onclick=()=>{qA.copy(curQuat);setQtext();updateSlerp();};
+  $("setB").onclick=()=>{qB.copy(curQuat);setQtext();updateSlerp();};
+  $("swapAB").onclick=()=>{const t=qA.clone();qA.copy(qB);qB.copy(t);setQtext();updateSlerp();};
+  $("tee").addEventListener("input",updateSlerp);
+  let sweeping=false,sweepStart=0; $("playSlerp").onclick=()=>{sweeping=true;sweepStart=performance.now();};
+  // wiring: GIMBAL
+  ["gHead","gPitch","gBank"].forEach(id=>$(id).addEventListener("input",()=>{racing=false;updateGimbalManual();}));
+  $("driveLock").onclick=()=>{racing=false;$("gPitch").value=90;updateGimbalManual();};
+  $("gReset").onclick=()=>{racing=false;$("gHead").value=0;$("gPitch").value=0;$("gBank").value=0;updateGimbalManual();};
+  $("gSetA").onclick=()=>{poseA={h:+$("gHead").value,p:+$("gPitch").value,b:+$("gBank").value};
+    $("glNote").innerHTML='Saved <b>A</b> = ('+poseA.h+'°, '+poseA.p+'°, '+poseA.b+'°).';};
+  $("gSetB").onclick=()=>{poseB={h:+$("gHead").value,p:+$("gPitch").value,b:+$("gBank").value};
+    $("glNote").innerHTML='Saved <b>B</b> = ('+poseB.h+'°, '+poseB.p+'°, '+poseB.b+'°).';};
+  $("gPlay").onclick=()=>{racing=true;raceStart=performance.now();};
+  $("gT").addEventListener("input",()=>{racing=false;runRace(+$("gT").value);});
+
+  function tick(now){
+    Rcur+=(Rtarget-Rcur)*0.12; placeCam();
+    if(sweeping&&mode==="sl"){const t=Math.min((now-sweepStart)/1600,1);$("tee").value=t;updateSlerp();if(t>=1)sweeping=false;}
+    if(racing&&mode==="gl"){const t=Math.min((now-raceStart)/2400,1);runRace(t);if(t>=1)racing=false;}
+    renderer.render(scene,cam); requestAnimationFrame(tick);
+  }
+  resize(); setMode("aa"); requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
