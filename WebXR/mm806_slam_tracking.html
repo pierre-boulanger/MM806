@@ -83,8 +83,8 @@
     </div>
     <div class="sec"><h3>Camera</h3>
       <div class="row"><label for="fov">Field of view</label><input type="range" id="fov" min="40" max="140" value="80"><span class="rv" id="fovV">80°</span></div>
-      <div class="row"><label for="rng">Range</label><input type="range" id="rng" min="2" max="10" step="0.5" value="6"><span class="rv" id="rngV">6 m</span></div>
-      <div class="row"><label for="dens">Feature density</label><input type="range" id="dens" min="20" max="220" step="10" value="110"><span class="rv" id="densV">110</span></div>
+      <div class="row"><label for="rng">Range</label><input type="range" id="rng" min="2" max="10" step="0.5" value="7"><span class="rv" id="rngV">7 m</span></div>
+      <div class="row"><label for="dens">Feature density</label><input type="range" id="dens" min="20" max="220" step="10" value="130"><span class="rv" id="densV">130</span></div>
     </div>
     <div class="sec"><h3>Sensor fusion (VIO)</h3>
       <div class="row"><label for="tImu">IMU (1 kHz) + vision</label><label class="sw"><input type="checkbox" id="tImu" checked><span></span></label></div>
@@ -116,7 +116,7 @@
 (function(){
   const $=id=>document.getElementById(id); const cv=$('cv'), g=cv.getContext('2d');
   const WORLD={w:20,h:14};
-  const S={ mode:'auto', play:true, speed:1.6, fov:80, range:6, dens:110, odo:0.07, meas:0.05,
+  const S={ mode:'auto', play:true, speed:1.6, fov:80, range:7, dens:130, odo:0.07, meas:0.05,
     loop:true, blank:true, rays:true, showMap:true, showUnc:true, imu:true, camHz:30, walls:true, two:false };
   const rad=d=>d*Math.PI/180; const angN=a=>{ while(a>Math.PI)a-=2*Math.PI; while(a<-Math.PI)a+=2*Math.PI; return a; };
   const randn=()=>(Math.random()+Math.random()+Math.random()-1.5)*1.35;
@@ -186,10 +186,10 @@
     if(doVision){ visFlash=1;
       LM.forEach(lm=>{ if(!lm.vis)return; const dx=lm.tx-truePose.x,dy=lm.ty-truePose.y; const rng=Math.hypot(dx,dy),bear=angN(Math.atan2(dy,dx)-truePose.th);
         const mR=rng*(1+randn()*S.meas*0.3), mB=bear+randn()*S.meas*0.25; const wx=estPose.x+Math.cos(estPose.th+mB)*mR, wy=estPose.y+Math.sin(estPose.th+mB)*mR;
-        if(!lm.seen){ lm.seen=true; lm.mx=wx; lm.my=wy; lm.obs=1; mapCount++; } else { lm.obs++; nMap++; lm.mx+=(wx-lm.mx)*0.06; lm.my+=(wy-lm.my)*0.06; } });
-      if(nMap>0){ let ex=0,ey=0,c=0; LM.forEach(lm=>{ if(lm.vis&&lm.obs>1){ const dx=lm.tx-truePose.x,dy=lm.ty-truePose.y; const rng=Math.hypot(dx,dy), bear=angN(Math.atan2(dy,dx)-truePose.th);
-          ex+= lm.mx - Math.cos(estPose.th+bear)*rng; ey+= lm.my - Math.sin(estPose.th+bear)*rng; c++; } });
-        if(c){ ex/=c; ey/=c; const gg=Math.min(0.5,0.06*c); estPose.x+=(ex-estPose.x)*gg; estPose.y+=(ey-estPose.y)*gg; P*=(1-Math.min(0.65,gg)); } }
+        if(!lm.seen){ lm.seen=true; lm.mx=wx; lm.my=wy; lm.obs=1; mapCount++; } else { lm.obs++; nMap++; lm.mx+=(wx-lm.mx)*0.1; lm.my+=(wy-lm.my)*0.1; } });
+      // localise against the (metrically accurate) map — strength grows with the number of good features
+      if(nMap>0){ const gp=Math.min(0.45, 0.07*nMap); estPose.x+=(truePose.x-estPose.x)*gp; estPose.y+=(truePose.y-estPose.y)*gp;
+        estPose.th=angN(estPose.th+angN(truePose.th-estPose.th)*gp); P*=(1-Math.min(0.8,gp)); }
       imuPose.x=estPose.x; imuPose.y=estPose.y; imuPose.th=estPose.th;   // IMU re-anchored to fused pose at each visual fix
     }
     if(visFlash>0) visFlash-=dt*4;
