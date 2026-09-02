@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>How the AR Image Is Created — Waveguide Optics — MM806</title>
+<style>
+  :root{
+    --bg:#0b0f16; --panel:rgba(18,24,33,0.94); --panel2:rgba(30,38,50,0.9);
+    --line:#2a3442; --ink:#e8edf4; --dim:#9fb0c3; --accent:#4ea1ff; --accent2:#37d6a0;
+    --warn:#ff6b6b; --gold:#ffcf5c; --shadow:0 8px 30px rgba(0,0,0,0.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  #wrap{position:fixed;inset:0}
+  canvas{display:block}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  #title{position:fixed;top:14px;left:14px;padding:12px 15px;max-width:min(54vw,420px);z-index:6}
+  #title .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  #title h1{margin:3px 0 3px;font-size:19px}
+  #title .sub{font-size:12.5px;color:var(--dim);line-height:1.4}
+  #panel{position:fixed;right:14px;top:14px;width:min(92vw,290px);max-height:92vh;display:flex;flex-direction:column;z-index:6}
+  #phead{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;cursor:pointer;user-select:none}
+  #phead b{font-size:13px}#phead .chev{color:var(--dim);transition:transform .2s}
+  #panel.collapsed .chev{transform:rotate(-90deg)}
+  #pbody{overflow:auto;padding:0 12px 12px}#panel.collapsed #pbody{display:none}
+  .sec{border-top:1px solid var(--line);padding:9px 0 5px}.sec:first-child{border-top:none}
+  .sec h3{margin:0 0 7px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--accent2)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
+  .row label{font-size:12.5px}.row .rv{font-size:11.5px;color:var(--dim);min-width:56px;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:120px;height:4px;border-radius:3px;background:#2a3646;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0b0f16}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0b0f16}
+  .sw{position:relative;display:inline-block;width:40px;height:22px;flex:0 0 auto;cursor:pointer}
+  .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}
+  .sw span{position:absolute;inset:0;background:#33404f;border-radius:20px;transition:.15s}
+  .sw span::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#cdd7e2;border-radius:50%;transition:.15s}
+  .sw input:checked + span{background:var(--accent)}.sw input:checked + span::before{transform:translateX(18px);background:#fff}
+  .segw{display:flex;gap:6px;flex-wrap:wrap}
+  .seg{flex:1;min-width:0;padding:7px 6px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:11.5px;font-weight:600;cursor:pointer;text-align:center}
+  .seg.sel{border-color:var(--accent);background:rgba(78,161,255,.14)}
+  .stages{display:flex;flex-direction:column;gap:4px}
+  .stbtn{padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:12px;cursor:pointer;text-align:left}
+  .stbtn.sel{border-color:var(--accent2);background:rgba(55,214,160,.13)}
+  #desc{position:fixed;left:14px;bottom:14px;width:min(92vw,430px);padding:11px 14px;z-index:6}
+  #desc h4{margin:0 0 5px;font-size:13px;color:var(--accent)}#desc p{margin:0;font-size:12.5px;line-height:1.45}
+  #warn{color:var(--warn);font-weight:600;font-size:12px;margin-top:6px;display:none}
+  @media (max-width:760px){ #title{max-width:64vw} #desc{display:none} }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+
+<div id="title" class="card">
+  <div class="tag">MM806 · AR Optics</div>
+  <h1>How the AR image is created</h1>
+  <div class="sub">A waveguide combiner. Each display pixel becomes a collimated beam whose <b>angle</b> encodes its position; the lens relays those beams to your eye, which turns angle back into a sharp virtual image.</div>
+</div>
+
+<div id="panel" class="card">
+  <div id="phead"><b>Optics</b><span class="chev">▾</span></div>
+  <div id="pbody">
+    <div class="sec">
+      <h3>Walk the stages</h3>
+      <div class="stages" id="stages"></div>
+    </div>
+    <div class="sec">
+      <h3>Waveguide</h3>
+      <div class="row"><label>Type</label><div class="segw" style="flex:1"><button class="seg" data-type="diffractive">Diffractive</button><button class="seg" data-type="reflective">Reflective</button></div></div>
+      <div class="row"><label for="nIdx">Index n</label><input type="range" id="nIdx" min="1.40" max="2.00" step="0.01" value="1.60"><span class="rv" id="nV">1.60</span></div>
+      <div class="row"><label for="ang">TIR angle</label><input type="range" id="ang" min="30" max="80" step="1" value="58"><span class="rv" id="angV">58°</span></div>
+      <div class="row"><label for="rep">Pupil replication</label><input type="range" id="rep" min="1" max="6" step="1" value="4"><span class="rv" id="repV">4</span></div>
+    </div>
+    <div class="sec">
+      <h3>Image</h3>
+      <div class="row"><label>Pixels shown</label><div class="segw" style="flex:1"><button class="seg" data-px="1">1</button><button class="seg" data-px="3">3</button></div></div>
+      <div class="row"><label for="tVI">Show virtual image</label><label class="sw"><input type="checkbox" id="tVI" checked><span></span></label></div>
+      <div class="row"><label for="tEye">Show eye / retina</label><label class="sw"><input type="checkbox" id="tEye" checked><span></span></label></div>
+    </div>
+    <div class="sec">
+      <h3>Animation</h3>
+      <div class="row"><label for="tPlay">Play</label><label class="sw"><input type="checkbox" id="tPlay" checked><span></span></label></div>
+      <div class="row"><label for="spd">Speed</label><input type="range" id="spd" min="20" max="200" step="5" value="100"><span class="rv" id="spdV">1.0×</span></div>
+    </div>
+  </div>
+</div>
+
+<div id="desc" class="card">
+  <h4 id="descTitle">The whole chain</h4>
+  <p id="descBody">Light from a tiny micro-display is collimated so each pixel leaves as a parallel beam at its own angle. An in-coupler bends the beams into the lens, where they bounce by total internal reflection. An out-coupler in front of your eye ejects them — copied across an eyebox — and your eye focuses each angle to a point, forming a crisp virtual image that appears to float in the world.</p>
+  <p id="warn">⚠ Angle below the critical angle — light escapes the waveguide instead of guiding (no image).</p>
+</div>
+
+<script id="appcode">
+"use strict";
+(function(){
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const $ = id => document.getElementById(id);
+
+  const PIX = [ {o:-1,c:'#4ea1ff'}, {o:0,c:'#37d6a0'}, {o:1,c:'#ffcf5c'} ];  // three sample pixels (colours)
+
+  const S = { type:'diffractive', n:1.60, ang:58, rep:4, pixels:3,
+    showVI:true, showEye:true, play:true, speed:1.0, stage:0, phase:0 };
+
+  const STAGES = [
+    ['0 · Whole chain','Light from a tiny micro-display is collimated so each pixel leaves as a parallel beam at its own angle. An in-coupler bends the beams into the lens; they bounce by total internal reflection; an out-coupler ejects them across an eyebox toward your eye, which focuses each angle to a point — a crisp virtual image floating in front of you.'],
+    ['1 · Micro-display','A postage-stamp micro-display (LCoS or micro-LED) creates the picture as a grid of lit pixels. It is far too small and close to see directly — it must be relayed to the eye.'],
+    ['2 · Collimation → angle','A lens collimates the display: every point turns into a bundle of parallel rays. A pixel\u2019s position on the panel becomes a unique beam ANGLE. From here on, position is carried as angle, not as a focused picture.'],
+    ['3 · In-coupler','A grating (diffractive) or prism/mirror (reflective) at the edge of the lens tips the beams to a steep angle so they will bounce inside the glass instead of passing through.'],
+    ['4 · Total internal reflection','Because the beams strike the surfaces beyond the critical angle, they reflect perfectly and zig-zag along the thin lens with no loss — the glass acts as a light pipe that preserves each beam\u2019s angle.'],
+    ['5 · Out-coupler + eyebox','A second grating in front of the pupil ejects the light toward the eye. It taps the beam at several points, making copies side by side so the image survives as your eye moves — the "eyebox" or pupil replication.'],
+    ['6 · Eye forms the image','Your eye lens converts beam ANGLE back into position on the retina, so all the pixel-angles reassemble into a sharp picture. Because the beams are collimated, the image appears at a comfortable far distance — a virtual image floating in the scene.']
+  ];
+
+  // ---------- UI ----------
+  const stagesWrap=$('stages'); const stBtns=[];
+  STAGES.forEach((s,i)=>{ const b=document.createElement('button'); b.className='stbtn'; b.textContent=s[0];
+    b.addEventListener('click',()=>setStage(i)); stagesWrap.appendChild(b); stBtns.push(b); });
+  function setStage(i){ S.stage=i; stBtns.forEach((b,k)=>b.classList.toggle('sel',k===i));
+    $('descTitle').textContent=STAGES[i][0]; $('descBody').textContent=STAGES[i][1]; }
+
+  document.querySelectorAll('.seg[data-type]').forEach(b=>b.addEventListener('click',()=>{
+    S.type=b.dataset.type; document.querySelectorAll('.seg[data-type]').forEach(x=>x.classList.toggle('sel',x===b)); }));
+  document.querySelectorAll('.seg[data-px]').forEach(b=>b.addEventListener('click',()=>{
+    S.pixels=parseInt(b.dataset.px); document.querySelectorAll('.seg[data-px]').forEach(x=>x.classList.toggle('sel',x===b)); }));
+
+  function bindR(id,vid,fmt,fn){const e=$(id),v=$(vid);const u=()=>{fn(parseFloat(e.value));v.textContent=fmt(parseFloat(e.value));};e.addEventListener('input',u);u();}
+  bindR('nIdx','nV',x=>x.toFixed(2),x=>S.n=x);
+  bindR('ang','angV',x=>x+'°',x=>S.ang=x);
+  bindR('rep','repV',x=>String(x),x=>S.rep=x);
+  bindR('spd','spdV',x=>(x/100).toFixed(1)+'×',x=>S.speed=x/100);
+  function bindT(id,fn){const e=$(id);const u=()=>fn(e.checked);e.addEventListener('change',u);u();}
+  bindT('tVI',v=>S.showVI=v); bindT('tEye',v=>S.showEye=v); bindT('tPlay',v=>S.play=v);
+  $('phead').addEventListener('click',()=>$('panel').classList.toggle('collapsed'));
+
+  // init selected states
+  document.querySelector('.seg[data-type="diffractive"]').classList.add('sel');
+  document.querySelector('.seg[data-px="3"]').classList.add('sel');
+  setStage(0);
+
+  // ---------- resize ----------
+  let W=0,H=0,DPR=1;
+  function resize(){ DPR=Math.min(window.devicePixelRatio||1,2); W=window.innerWidth; H=window.innerHeight;
+    cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.setTransform(DPR,0,0,DPR,0,0); }
+  window.addEventListener('resize', resize); resize();
+
+  // ---------- helpers ----------
+  const rad=d=>d*Math.PI/180;
+  function line(a,b,col,w,dash){ ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=w||2; if(dash)ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); ctx.restore(); }
+  function poly(pts,col,w,dash){ ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=w||2; if(dash)ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]); ctx.stroke(); ctx.restore(); }
+  function dot(p,col,r){ ctx.save(); ctx.fillStyle=col; ctx.beginPath(); ctx.arc(p[0],p[1],r||3,0,7); ctx.fill(); ctx.restore(); }
+  function txt(t,x,y,col,size,align){ ctx.save(); ctx.fillStyle=col||'#9fb0c3'; ctx.font=(size||12)+'px -apple-system,Segoe UI,Roboto,sans-serif';
+    ctx.textAlign=align||'left'; ctx.fillText(t,x,y); ctx.restore(); }
+  function dim(active){ return active ? 1 : 0.22; }
+  function polylineLen(p){ let L=0; for(let i=1;i<p.length;i++){ L+=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]); } return L; }
+  function pointAt(p,t){ // t in [0,1] along polyline
+    const L=polylineLen(p)*t; let d=0;
+    for(let i=1;i<p.length;i++){ const seg=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]);
+      if(d+seg>=L){ const f=(L-d)/(seg||1); return [p[i-1][0]+(p[i][0]-p[i-1][0])*f, p[i-1][1]+(p[i][1]-p[i-1][1])*f]; } d+=seg; }
+    return p[p.length-1]; }
+
+  // ---------- scene ----------
+  function geom(){
+    const cy=Math.round(H*0.46);
+    const th=Math.max(20,Math.min(34,H*0.045));
+    const yTop=cy-th/2, yBot=cy+th/2;
+    const wgL=W*0.16, wgR=W*0.80;
+    const xic=W*0.26;                  // in-couple point (bottom surface)
+    const oc0=W*0.50, oc1=W*0.68;      // out-couple region
+    const dispX=W*0.055, lensX=W*0.135;
+    const eye=[W*0.865, cy+Math.max(70,H*0.17)];
+    return {cy,th,yTop,yBot,wgL,wgR,xic,oc0,oc1,dispX,lensX,eye};
+  }
+
+  function buildRelay(g){
+    const alpha=rad(S.ang); const dx=g.th*Math.tan(alpha);
+    const pts=[[g.xic,g.yBot]]; const bottomHits=[];
+    let x=g.xic, up=true, guard=0;
+    while(x < g.oc1 && guard++<60){
+      x+=dx; const y=up?g.yTop:g.yBot; pts.push([x,y]); if(!up) bottomHits.push([x,y]); up=!up;
+    }
+    // out-couple exit points within region
+    const exits=bottomHits.filter(p=>p[0]>=g.oc0 && p[0]<=g.oc1).slice(0,S.rep);
+    if(exits.length===0 && bottomHits.length) exits.push(bottomHits[bottomHits.length-1]);
+    return {pts,exits,dx};
+  }
+
+  function draw(now){
+    ctx.clearRect(0,0,W,H);
+    const g=geom(); const R=buildRelay(g);
+    const thetaC = Math.asin(1/S.n)*180/Math.PI;
+    const tir = S.ang > thetaC;
+    $('warn').style.display = tir ? 'none' : 'block';
+    const st=S.stage;
+    const show = k => st===0 || st===k;   // which stage is emphasised
+
+    // ---- waveguide slab ----
+    ctx.save();
+    const grd=ctx.createLinearGradient(0,g.yTop,0,g.yBot);
+    grd.addColorStop(0,'rgba(120,170,210,0.14)'); grd.addColorStop(0.5,'rgba(120,170,210,0.05)'); grd.addColorStop(1,'rgba(120,170,210,0.14)');
+    ctx.fillStyle=grd; ctx.fillRect(g.wgL,g.yTop,g.wgR-g.wgL,g.th);
+    ctx.strokeStyle='rgba(150,190,225,0.5)'; ctx.lineWidth=1.5;
+    ctx.strokeRect(g.wgL,g.yTop,g.wgR-g.wgL,g.th); ctx.restore();
+    txt('waveguide (the lens) · n = '+S.n.toFixed(2), g.wgL, g.yTop-10, 'rgba(150,190,225,0.8)', 12);
+
+    // ---- couplers ----
+    function coupler(x0,x1,label,col){
+      ctx.save();
+      if(S.type==='diffractive'){ ctx.strokeStyle=col; ctx.lineWidth=1;
+        for(let x=x0;x<=x1;x+=5){ ctx.beginPath(); ctx.moveTo(x,g.yTop+2); ctx.lineTo(x,g.yBot-2); ctx.stroke(); } }
+      else { ctx.strokeStyle=col; ctx.lineWidth=2;
+        for(let x=x0;x<=x1;x+=12){ ctx.beginPath(); ctx.moveTo(x,g.yBot-2); ctx.lineTo(x+8,g.yTop+2); ctx.stroke(); } }
+      ctx.restore();
+      txt(label, (x0+x1)/2, g.yBot+18, col, 11, 'center');
+    }
+    coupler(g.xic-16, g.xic+16, 'in-coupler', tir?'#7fd0ff':'#ff6b6b');
+    coupler(g.oc0, g.oc1, 'out-coupler', '#8fe6c8');
+
+    // ---- micro-display + collimation lens ----
+    const gA=dim(show(1)||show(2));
+    ctx.globalAlpha=gA;
+    // display panel
+    ctx.save(); ctx.fillStyle='#11202f'; ctx.strokeStyle='#3a5570'; ctx.lineWidth=1.5;
+    const dh=Math.max(60,H*0.14), dtop=g.cy-dh/2;
+    ctx.fillRect(g.dispX-8,dtop,16,dh); ctx.strokeRect(g.dispX-8,dtop,16,dh); ctx.restore();
+    txt('micro-display', g.dispX, dtop-8, '#9fb0c3', 11, 'center');
+    // lens
+    ctx.save(); ctx.strokeStyle='#bcd2ff'; ctx.lineWidth=2; ctx.beginPath();
+    ctx.ellipse(g.lensX, g.cy, 7, dh*0.42, 0, 0, 7); ctx.stroke(); ctx.restore();
+    txt('collimating lens', g.lensX, g.cy+dh*0.42+16, '#9fb0c3', 11, 'center');
+    ctx.globalAlpha=1;
+
+    // pixel sources (positions on the display)
+    const usePix = S.pixels===1 ? [PIX[1]] : PIX;
+    const pixY = o => g.cy + o*(dh*0.28);
+
+    // ---- build full path per pixel ----
+    const paths = usePix.map(px=>{
+      const src=[g.dispX, pixY(px.o)];
+      const lens=[g.lensX, g.cy];
+      const inC=[g.xic, g.yBot];
+      const relay = R.pts.slice();               // in-couple -> along guide
+      const ocp = R.exits.length? R.exits[0] : relay[relay.length-1];
+      // exit ray leaves out-coupler at an angle that encodes the pixel (fan toward eye)
+      const baseAng = Math.atan2(g.eye[1]-ocp[1], g.eye[0]-ocp[0]);
+      const exAng = baseAng + rad(px.o*7);
+      const pupil=[ ocp[0]+Math.cos(exAng)*(g.eye[0]-ocp[0])*0.94, ocp[1]+Math.sin(exAng)*(g.eye[0]-ocp[0])*0.94 ];
+      const retina=[ g.eye[0]+26, g.eye[1]+px.o*10 ];   // retina spot (angle -> position)
+      // relay portion up to primary out-couple point
+      const idx = relay.findIndex(p=>p[0]===ocp[0] && p[1]===ocp[1]);
+      const relayToOC = idx>=0 ? relay.slice(0,idx+1) : relay;
+      const full = [src, lens, inC, ...relayToOC.slice(1), pupil, retina];
+      return { px, src, lens, inC, relayToOC, ocp, exAng, pupil, retina, full, exits:R.exits };
+    });
+
+    // ---- draw static rays ----
+    // display -> lens (converging chief rays), lens -> in-couple (collimated angle)
+    const aColl=dim(show(2)||show(1));
+    paths.forEach(P=>{ ctx.globalAlpha=aColl;
+      line(P.src,P.lens,P.px.c,1.6);
+      line(P.lens,P.inC,P.px.c,1.6);
+      ctx.globalAlpha=1;
+    });
+
+    // in-couple + relay (TIR)
+    const aRelay=dim(show(3)||show(4));
+    ctx.globalAlpha=aRelay;
+    if(tir){ paths.forEach(P=> poly(P.relayToOC, P.px.c, 1.8) ); }
+    else {
+      // leaking: draw beams passing through the top surface instead of guiding
+      paths.forEach(P=>{ const a=P.inC; const b=[a[0]+120, a[1]-160]; line(a,b,'#ff6b6b',1.6,[5,5]); });
+    }
+    ctx.globalAlpha=1;
+
+    // out-couple exits + eyebox replication
+    const aOut=dim(show(5)||show(6));
+    ctx.globalAlpha=aOut;
+    if(tir){
+      // eyebox: central pixel exits from every replication point (parallel copies)
+      const cP = paths[Math.floor(paths.length/2)];
+      R.exits.forEach(ep=>{ const ang=Math.atan2(g.eye[1]-ep[1], g.eye[0]-ep[0]);
+        const to=[ep[0]+Math.cos(ang)*(g.eye[0]-ep[0]), ep[1]+Math.sin(ang)*(g.eye[0]-ep[0])];
+        line(ep,to,'rgba(143,230,200,0.5)',1.2); dot(ep,'#8fe6c8',2.5); });
+      // per-pixel exit angle (to eye) + into retina
+      paths.forEach(P=>{ line(P.ocp,P.pupil,P.px.c,1.8); line(P.pupil,P.retina,P.px.c,1.6); });
+    }
+    ctx.globalAlpha=1;
+
+    // ---- eye ----
+    if(S.showEye){
+      const e=g.eye; const aEye=dim(show(6));
+      ctx.save(); ctx.globalAlpha=aEye;
+      ctx.strokeStyle='#cdd7e2'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(e[0],e[1],26,0,7); ctx.stroke();
+      // lens
+      ctx.strokeStyle='#8fb6ff'; ctx.beginPath(); ctx.ellipse(e[0]-6,e[1],4,14,0,0,7); ctx.stroke();
+      // retina
+      ctx.strokeStyle='#6a7788'; ctx.beginPath(); ctx.arc(e[0]+2,e[1],22,-1.0,1.0); ctx.stroke();
+      paths.forEach(P=> dot(P.retina,P.px.c,3));
+      ctx.restore();
+      txt('eye', e[0], e[1]+40, '#9fb0c3', 11, 'center');
+    }
+
+    // ---- virtual image ----
+    if(S.showVI && tir){
+      const aVI=dim(show(6));
+      ctx.globalAlpha=aVI;
+      const vix=W*0.30, viy=H*0.14;
+      paths.forEach(P=>{
+        // back-project the eye-bound exit ray to the virtual-image plane (dashed)
+        const dirx=P.pupil[0]-P.ocp[0], diry=P.pupil[1]-P.ocp[1];
+        const k=-(P.ocp[0]-vix)/(dirx||1);
+        const vp=[vix, P.ocp[1]+diry*k];
+        line(P.ocp,[vp[0],vp[1]],P.px.c,1,[4,5]);
+        dot(vp,P.px.c,3.5);
+      });
+      ctx.globalAlpha=1;
+      txt('virtual image (appears far away)', vix, viy-10, '#cdd7e2', 12, 'center');
+      ctx.save(); ctx.strokeStyle='rgba(205,215,226,0.4)'; ctx.setLineDash([3,4]);
+      ctx.strokeRect(vix-30, viy, 60, 46); ctx.restore();
+    }
+
+    // ---- animated photons ----
+    if(tir){
+      const heads = 3;
+      paths.forEach((P,pi)=>{
+        for(let hquad=0; hquad<heads; hquad++){
+          let t=(S.phase + hquad/heads + pi*0.05) % 1;
+          const p=pointAt(P.full, t);
+          dot(p, P.px.c, 3.2);
+        }
+      });
+    }
+
+    // ---- info readouts ----
+    txt('critical angle θc = '+thetaC.toFixed(1)+'°   ·   TIR angle = '+S.ang+'°   ·   '+(tir?'guiding ✓':'leaking ✗'),
+        g.wgL, H*0.92, tir?'#8fe6c8':'#ff6b6b', 12.5);
+    txt('pixel position  →  beam angle  →  retina position', g.wgL, H*0.92+18, '#9fb0c3', 12);
+  }
+
+  // ---------- loop ----------
+  let last=performance.now();
+  function frame(now){
+    const dt=Math.min(0.05,(now-last)/1000); last=now;
+    if(S.play) S.phase=(S.phase + dt*0.22*S.speed) % 1;
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

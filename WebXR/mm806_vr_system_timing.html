@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>VR System Timing &amp; Interconnect — MM806</title>
+<style>
+  :root{
+    --bg:#0a0e15; --panel:rgba(18,24,33,0.94); --panel2:rgba(30,38,50,0.9);
+    --line:#2a3442; --ink:#e8edf4; --dim:#9fb0c3; --accent:#4ea1ff; --ok:#37d6a0; --warn:#ffcf5c; --crit:#ff6b6b; --shadow:0 8px 30px rgba(0,0,0,0.45);
+    --track:#8fb6ff; --ai:#c59bff; --phys:#ffb17a; --vis:#4ea1ff; --snd:#37d6a0; --hap:#ff6b9d; --disp:#e8edf4;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #cv{border-radius:12px;background:#0d1420;box-shadow:var(--shadow);max-width:96vw;max-height:74vh}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  #title{position:fixed;top:14px;left:14px;padding:11px 14px;max-width:min(44vw,330px);z-index:6}
+  #title .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  #title h1{margin:3px 0 3px;font-size:17px}#title .sub{font-size:12px;color:var(--dim);line-height:1.4}
+  #metrics{position:fixed;left:14px;top:112px;width:min(90vw,244px);z-index:6;padding:10px 13px}
+  #status{font-size:14px;font-weight:800;padding:6px 10px;border-radius:8px;text-align:center;margin-bottom:8px}
+  #status.ok{background:rgba(55,214,160,.15);color:var(--ok)} #status.miss{background:rgba(255,107,107,.16);color:var(--crit)}
+  .m{display:flex;justify-content:space-between;font-size:12px;margin:5px 0;color:var(--dim)}
+  .m b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .m b.warn{color:var(--warn)} .m b.crit{color:var(--crit)} .m b.ok{color:var(--ok)}
+  #panel{position:fixed;right:14px;top:14px;width:min(92vw,268px);max-height:94vh;display:flex;flex-direction:column;z-index:6}
+  #phead{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;cursor:pointer;user-select:none}
+  #phead b{font-size:13px}#phead .chev{color:var(--dim);transition:transform .2s}
+  #panel.collapsed .chev{transform:rotate(-90deg)}
+  #pbody{overflow:auto;padding:0 12px 12px}#panel.collapsed #pbody{display:none}
+  .sec{border-top:1px solid var(--line);padding:8px 0 4px}.sec:first-child{border-top:none}
+  .sec h3{margin:0 0 6px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ok)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
+  .row label{font-size:12px}.row .rv{font-size:11px;color:var(--dim);min-width:58px;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:108px;height:4px;border-radius:3px;background:#2a3646;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0a0e15}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0a0e15}
+  .sw{position:relative;display:inline-block;width:40px;height:22px;flex:0 0 auto;cursor:pointer}
+  .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}
+  .sw span{position:absolute;inset:0;background:#33404f;border-radius:20px;transition:.15s}
+  .sw span::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#cdd7e2;border-radius:50%;transition:.15s}
+  .sw input:checked + span{background:var(--accent)}.sw input:checked + span::before{transform:translateX(18px);background:#fff}
+  .segw{display:flex;gap:6px}
+  .seg{flex:1;padding:6px 4px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:11.5px;font-weight:600;cursor:pointer;text-align:center}
+  .seg.sel{border-color:var(--accent);background:rgba(78,161,255,.14)}
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+  .pre{padding:7px 5px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:11.5px;font-weight:600;cursor:pointer;text-align:center}
+  .pre:hover{border-color:var(--accent)}
+  #hint{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:6;font-size:11.5px;color:var(--dim);background:rgba(10,14,21,.6);padding:4px 11px;border-radius:20px;border:1px solid var(--line)}
+  @media (max-width:920px){ #metrics{display:none} }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv" width="900" height="680"></canvas></div>
+
+<div id="title" class="card">
+  <div class="tag">MM806 · VR Systems · Timing &amp; I/O</div>
+  <h1>VR timing &amp; interconnect</h1>
+  <div class="sub">Pose → AI → physics (2 GPU) → stereo render (2 GPU) + audio + haptics, over an interconnect. Every unit must finish inside the frame budget.</div>
+</div>
+
+<div id="metrics" class="card">
+  <div id="status" class="ok">FRAME MET</div>
+  <div class="m"><span>Budget @ <span id="rateLbl">90</span> Hz</span><b id="budget">—</b></div>
+  <div class="m"><span>Latency (crit path)</span><b id="ftime">—</b></div>
+  <div class="m"><span>Motion-to-photon</span><b id="mtp">—</b></div>
+  <div class="m"><span>Throughput</span><b id="thru">—</b></div>
+  <div class="m"><span>Pipeline latency</span><b id="plat">—</b></div>
+  <div class="m"><span>Bottleneck res.</span><b id="bottle">—</b></div>
+  <div class="m"><span>Missed frames</span><b id="miss">—</b></div>
+  <div class="m"><span>Haptic rate</span><b id="hrate">—</b></div>
+  <div class="m"><span>Bus / network</span><b id="bus">—</b></div>
+</div>
+
+<div id="panel" class="card">
+  <div id="phead"><b>System</b><span class="chev">▾</span></div>
+  <div id="pbody">
+    <div class="sec"><h3>Presets</h3><div class="presets" id="presets"></div></div>
+    <div class="sec"><h3>Display</h3>
+      <div class="segw" id="rateSeg"><button class="seg" data-rate="72">72 Hz</button><button class="seg" data-rate="90">90 Hz</button><button class="seg" data-rate="120">120 Hz</button></div>
+    </div>
+    <div class="sec"><h3>Compute (ms)</h3>
+      <div class="row"><label for="phys">Physics ×2 GPU</label><input type="range" id="phys" min="0.5" max="10" step="0.1" value="4"><span class="rv" id="physV">4.0</span></div>
+      <div class="row"><label for="ai">AI inference</label><input type="range" id="ai" min="0" max="8" step="0.1" value="2"><span class="rv" id="aiV">2.0</span></div>
+      <div class="row"><label for="rnd">Render / eye</label><input type="range" id="rnd" min="0.5" max="9" step="0.1" value="3.5"><span class="rv" id="rndV">3.5</span></div>
+      <div class="row"><label for="snd">Spatial audio</label><input type="range" id="snd" min="0.2" max="4" step="0.1" value="1.2"><span class="rv" id="sndV">1.2</span></div>
+      <div class="row"><label for="hap">Haptics / tick</label><input type="range" id="hap" min="0.1" max="2.5" step="0.05" value="0.5"><span class="rv" id="hapV">0.50</span></div>
+    </div>
+    <div class="sec"><h3>Interconnect</h3>
+      <div class="row"><label for="bw">Bandwidth</label><input type="range" id="bw" min="4" max="64" step="1" value="32"><span class="rv" id="bwV">32 GB/s</span></div>
+      <div class="row"><label for="lat">Link latency</label><input type="range" id="lat" min="1" max="40" step="1" value="5"><span class="rv" id="latV">5 µs</span></div>
+    </div>
+    <div class="sec"><h3>Pipelining</h3>
+      <div class="row"><label for="pipe">Pipeline depth</label><input type="range" id="pipe" min="1" max="4" step="1" value="1"><span class="rv" id="pipeV">1 frame</span></div>
+    </div>
+    <div class="sec"><h3>Network (distributed)</h3>
+      <div class="row"><label for="dist">Split server + headset</label><label class="sw"><input type="checkbox" id="dist"><span></span></label></div>
+      <div class="row"><label for="nlat">Network latency</label><input type="range" id="nlat" min="1" max="40" step="1" value="8"><span class="rv" id="nlatV">8 ms</span></div>
+      <div class="row"><label for="nbw">Network bandwidth</label><input type="range" id="nbw" min="1" max="40" step="1" value="10"><span class="rv" id="nbwV">10 Gb/s</span></div>
+    </div>
+    <div class="sec"><h3>Options</h3>
+      <div class="row"><label for="aiOn">AI enabled</label><label class="sw"><input type="checkbox" id="aiOn" checked><span></span></label></div>
+      <div class="row"><label for="share">Share phys+render GPUs</label><label class="sw"><input type="checkbox" id="share"><span></span></label></div>
+      <div class="row"><label for="reproj">Async reprojection</label><label class="sw"><input type="checkbox" id="reproj" checked><span></span></label></div>
+      <div class="row"><label for="play">Run</label><label class="sw"><input type="checkbox" id="play" checked><span></span></label></div>
+    </div>
+  </div>
+</div>
+
+<div id="hint">packets = interconnect traffic · red bar = missed deadline</div>
+
+<script id="appcode">
+"use strict";
+(function(){
+  const $=id=>document.getElementById(id); const cv=$('cv'), x=cv.getContext('2d');
+  const COL={track:'#8fb6ff',ai:'#c59bff',phys:'#ffb17a',vis:'#4ea1ff',snd:'#37d6a0',hap:'#ff6b9d',disp:'#e8edf4',cpu:'#9fb0c3'};
+
+  // ---- units (compute lanes) ----
+  // res = hardware resource it occupies; kind = colour group
+  const UNITS=[
+    {id:'track',name:'Tracking / pose',kind:'track',res:'cpu'},
+    {id:'ai',   name:'AI inference',   kind:'ai',   res:'ai'},
+    {id:'physA',name:'Physics · GPU-A',kind:'phys', res:'gA'},
+    {id:'physB',name:'Physics · GPU-B',kind:'phys', res:'gB'},
+    {id:'visL', name:'Render L · GPU-L',kind:'vis', res:'gL'},
+    {id:'visR', name:'Render R · GPU-R',kind:'vis', res:'gR'},
+    {id:'snd',  name:'Spatial audio · GPU-S',kind:'snd',res:'gS'},
+    {id:'hap',  name:'Haptics · GPU-H (1 kHz)',kind:'hap',res:'gH'},
+    {id:'disp', name:'Composite / display',kind:'disp',res:'comp'}
+  ];
+  const U={}; UNITS.forEach(u=>U[u.id]=u);
+  // edges: [from,to, MB transferred]
+  const EDGES=[
+    ['track','ai',0.02],['track','physA',0.05],['track','physB',0.05],
+    ['ai','physA',0.08],['ai','physB',0.08],['ai','snd',0.05],['ai','visL',0.05],['ai','visR',0.05],
+    ['physA','visL',6],['physB','visR',6],['physA','snd',0.3],['physB','snd',0.3],['physA','hap',0.02],['physB','hap',0.02],
+    ['visL','disp',16],['visR','disp',16]
+  ];
+  const DEPS={}; UNITS.forEach(u=>DEPS[u.id]=[]); EDGES.forEach(([a,b])=>DEPS[b].push(a));
+  const ORDER=['track','ai','physA','physB','visL','visR','snd','hap','disp'];
+  // topology node positions (fractions of topo region)
+  const POS={ track:[0.07,0.5], ai:[0.24,0.5], physA:[0.44,0.30], physB:[0.44,0.70],
+    visL:[0.68,0.18], visR:[0.68,0.40], snd:[0.68,0.62], hap:[0.68,0.85], disp:[0.90,0.29] };
+
+  const S={ rate:90, phys:4, ai:2, rnd:3.5, snd:1.2, hap:0.5, bw:32, lat:5, aiOn:true, share:false, reproj:true, play:true,
+    pipe:1, dist:false, nlat:8, nbw:10, codec:4 };
+  const SERVER=new Set(['ai','physA','physB','visL','visR','snd']);
+  function machineOf(id){ return S.dist ? (SERVER.has(id)?'server':'client') : 'one'; }
+  function cross(a,b){ return machineOf(a)!==machineOf(b); }
+
+  function durOf(id){ switch(id){ case 'track':return 0.3; case 'ai':return S.aiOn?S.ai:0;
+    case 'physA': case 'physB': return S.phys; case 'visL': case 'visR': return S.rnd;
+    case 'snd':return S.snd; case 'hap':return S.hap; case 'disp':return 0.5; } return 0; }
+  function resOf(id){ if(S.share){ if(id==='visL')return 'gA'; if(id==='visR')return 'gB'; } return U[id].res; }
+  function transferMB(a,b){ const e=EDGES.find(x=>x[0]===a&&x[1]===b); return e?e[2]:0; }
+
+  // ---- schedule (resource + interconnect aware) ----
+  function schedule(scale){ scale=scale||1; const period=1000/S.rate;
+    let onMB=0, crossMB=0; EDGES.forEach(([a,b,mb])=>{ if(S.dist&&cross(a,b)) crossMB+=mb; else onMB+=mb; });
+    const cont=Math.max(1, onMB/(S.bw*period)); const nbwGB=Math.max(0.02,S.nbw/8);
+    function tt(a,b){ const mb=transferMB(a,b); if(S.dist&&cross(a,b)){ return S.nlat + mb/nbwGB + (b==='disp'?S.codec:0); } return (S.lat/1000 + mb/S.bw)*cont; }
+    const st={},en={},resFree={};
+    ORDER.forEach(id=>{ const d=durOf(id)*scale; let earliest=0, crit=null, critT=-1;
+      DEPS[id].forEach(dp=>{ const t=en[dp]+tt(dp,id); if(t>earliest){earliest=t;} if(en[dp]>critT){critT=en[dp];crit=dp;} });
+      const r=resOf(id); const rf=resFree[r]||0; const s=Math.max(earliest, rf); st[id]=s; en[id]=s+d; resFree[r]=en[id]; U[id]._crit=crit; });
+    const CP=en['disp'], mtpScan=0.5*period;
+    // per-resource busy time -> throughput bottleneck
+    const resBusy={}; ORDER.forEach(id=>{ const r=resOf(id); resBusy[r]=(resBusy[r]||0)+durOf(id); });
+    let bottle=0.001,bres='comp'; for(const r in resBusy){ if(resBusy[r]>bottle){bottle=resBusy[r];bres=r;} }
+    const BRES={gA:'Physics GPU',gB:'Physics GPU',gL:'Render GPU',gR:'Render GPU',gS:'Audio GPU',gH:'Haptic GPU',ai:'AI accel',cpu:'Tracking',comp:'Display'};
+    bres = (S.share&&(bres==='gA'||bres==='gB')) ? 'Phys+Render GPU' : (BRES[bres]||bres);
+    const slots=Math.max(1, Math.ceil(CP/period - 1e-9)); const D=S.pipe;
+    const sustained=(bottle<=period)&&(D>=slots);
+    let interval; if(bottle>period) interval=bottle; else if(D<slots) interval=CP/D; else interval=period;
+    const effRate=1000/interval; const latFrames=(D>=slots?slots:Math.max(1,Math.ceil(CP/period)));
+    const mtp = D>1 ? latFrames*period + mtpScan : CP + mtpScan;
+    const busUtil = S.dist ? crossMB/(nbwGB*period) : onMB/(S.bw*period);
+    const path=new Set(); let cur='disp'; while(cur){ path.add(cur); cur=U[cur]._crit; }
+    const hTick=S.hap + (S.dist&&cross('physA','hap')? S.nlat : (S.lat/1000 + 0.02/S.bw)*cont); const hRate=Math.min(1000, 1000/Math.max(0.001,hTick));
+    return {st,en,frameTime:CP,mtp,period,busUtil,path,bname:bres,hRate,cont, bottle,slots,sustained,effRate,latFrames,D};
+  }
+
+  // ---- rolling missed-frame stats (jittered) ----
+  const histN=90; let hist=[]; let lastSig='';
+  function sig(){ return [S.rate,S.phys,S.ai,S.rnd,S.snd,S.hap,S.bw,S.lat,S.aiOn,S.share,S.pipe,S.dist,S.nlat,S.nbw].join(','); }
+  function tickStats(){ const sg=sig(); if(sg!==lastSig){ hist.length=0; lastSig=sg; }
+    const sc=1+(Math.random()-0.5)*0.14; const r=schedule(sc); hist.push(r.sustained?0:1); if(hist.length>histN)hist.shift(); }
+
+  // ---- controls ----
+  function bindR(id,vid,fmt,fn){const e=$(id),v=$(vid);const u=()=>{fn(parseFloat(e.value));v.textContent=fmt(parseFloat(e.value));updateMetrics();};e.addEventListener('input',u);v.textContent=fmt(parseFloat(e.value));}
+  bindR('phys','physV',x=>x.toFixed(1),v=>S.phys=v); bindR('ai','aiV',x=>x.toFixed(1),v=>S.ai=v);
+  bindR('rnd','rndV',x=>x.toFixed(1),v=>S.rnd=v); bindR('snd','sndV',x=>x.toFixed(1),v=>S.snd=v);
+  bindR('hap','hapV',x=>x.toFixed(2),v=>S.hap=v);
+  bindR('bw','bwV',x=>x+' GB/s',v=>S.bw=v); bindR('lat','latV',x=>x+' µs',v=>S.lat=v);
+  bindR('nlat','nlatV',x=>x+' ms',v=>S.nlat=v); bindR('nbw','nbwV',x=>x+' Gb/s',v=>S.nbw=v);
+  $('pipe').addEventListener('input',()=>{ S.pipe=parseInt($('pipe').value); $('pipeV').textContent=S.pipe+' frame'+(S.pipe>1?'s':''); updateMetrics(); });
+  function bindT(id,fn){const e=$(id);const u=()=>{fn(e.checked);updateMetrics();};e.addEventListener('change',u);}
+  bindT('aiOn',v=>S.aiOn=v); bindT('share',v=>S.share=v); bindT('reproj',v=>S.reproj=v); bindT('play',v=>S.play=v); bindT('dist',v=>S.dist=v);
+  document.querySelectorAll('.seg[data-rate]').forEach(b=>b.addEventListener('click',()=>{ S.rate=parseInt(b.dataset.rate);
+    document.querySelectorAll('.seg[data-rate]').forEach(z=>z.classList.toggle('sel',z===b)); $('rateLbl').textContent=S.rate; updateMetrics(); }));
+  document.querySelector('.seg[data-rate="90"]').classList.add('sel');
+  $('phead').addEventListener('click',()=>$('panel').classList.toggle('collapsed'));
+  const PRE={ Light:{rate:90,phys:2,ai:1,rnd:2,snd:0.8,hap:0.4,bw:48}, Typical:{rate:90,phys:4,ai:2,rnd:3.5,snd:1.2,hap:0.5,bw:32},
+    Heavy:{rate:90,phys:6,ai:3.5,rnd:5,snd:1.8,hap:0.7,bw:24}, Overload:{rate:120,phys:8,ai:5,rnd:7,snd:2.5,hap:1.4,bw:12} };
+  const preWrap=$('presets');
+  Object.keys(PRE).forEach(k=>{ const b=document.createElement('button'); b.className='pre'; b.textContent=k;
+    b.addEventListener('click',()=>{ const p=PRE[k]; Object.assign(S,p); syncUI(); updateMetrics(); }); preWrap.appendChild(b); });
+  function syncUI(){ [['phys','physV',1],['ai','aiV',1],['rnd','rndV',1],['snd','sndV',1],['hap','hapV',2],['bw','bwV',0],['lat','latV',0]].forEach(([id,vid,dec])=>{
+    $(id).value=S[id]; $(vid).textContent= id==='bw'?S.bw+' GB/s': id==='lat'?S.lat+' µs': (dec?S[id].toFixed(dec):S[id].toFixed(1)); });
+    document.querySelectorAll('.seg[data-rate]').forEach(z=>z.classList.toggle('sel',parseInt(z.dataset.rate)===S.rate)); $('rateLbl').textContent=S.rate; }
+
+  function updateMetrics(){ const r=schedule(1); const missed=hist.length? Math.round(hist.reduce((a,b)=>a+b,0)/hist.length*100):0;
+    $('budget').textContent=r.period.toFixed(2)+' ms';
+    const ft=$('ftime'); ft.textContent=r.frameTime.toFixed(2)+' ms'; ft.className='b '+((r.frameTime>r.period&&r.D===1)?'crit':r.frameTime>r.period*0.9?'warn':'ok');
+    $('mtp').textContent=r.mtp.toFixed(1)+' ms';
+    const th=$('thru'); th.textContent=Math.round(r.effRate)+' Hz '+(r.sustained?'✓':'✗'); th.className='b '+(r.sustained?'ok':'crit');
+    $('plat').textContent=r.latFrames+' frame'+(r.latFrames>1?'s':'');
+    $('bottle').textContent=r.bottle.toFixed(2)+' ms · '+r.bname;
+    const ms=$('miss'); ms.textContent=missed+' %'; ms.className='b '+(missed>10?'crit':missed>2?'warn':'ok');
+    const hr=$('hrate'); hr.textContent=Math.round(r.hRate)+' Hz'; hr.className='b '+(r.hRate<950?'crit':r.hRate<995?'warn':'ok');
+    const bs=$('bus'); bs.textContent=Math.round(r.busUtil*100)+' %'+(S.dist?' net':''); bs.className='b '+(r.busUtil>1?'crit':r.busUtil>0.7?'warn':'ok');
+    const stz=$('status');
+    if(r.sustained){ stz.className='ok'; stz.textContent = r.D>1 ? ('RATE SUSTAINED · '+r.latFrames+'f latency') : 'FRAME MET'; }
+    else { stz.className='miss'; stz.textContent = r.D>1 ? 'PIPELINE DROPPING' : (S.reproj?'MISS · reprojected':'FRAME MISSED'); }
+  }
+
+  // ---- drawing ----
+  function rr(px,py,w,h,rad){ x.beginPath(); x.moveTo(px+rad,py); x.arcTo(px+w,py,px+w,py+h,rad); x.arcTo(px+w,py+h,px,py+h,rad); x.arcTo(px,py+h,px,py,rad); x.arcTo(px,py,px+w,py,rad); x.closePath(); }
+  let W=0,H=0, cursor=0, frameStart=0;
+  function layout(){ W=cv.width; H=cv.height; }
+  function topoNode(id){ const p=POS[id]; return {x:40+p[0]*(W-80), y:40+p[1]*(H*0.44-40), w:118, h:34}; }
+
+  function draw(now){
+    layout(); x.clearRect(0,0,W,H);
+    const r=schedule(1); const period=r.period; const axisMax=Math.max(period, r.frameTime, S.pipe*period)*1.1;
+    // advance cursor (one frame sweep ~1.5s real)
+    if(S.play){ if(!frameStart) frameStart=now; const el=(now-frameStart)/1500; cursor=(el%1)*axisMax; if(el>=1){ frameStart=now; } tickStats(); }
+    updateMetrics();
+
+    // ===== topology (upper) =====
+    x.fillStyle='#9fb0c3'; x.font='11px sans-serif'; x.textAlign='left'; x.fillText('Dataflow & interconnect (packets flow as each transfer happens)',16,20);
+    // edges + packets
+    EDGES.forEach(([a,b,mb])=>{ const A=topoNode(a),B=topoNode(b); const ax=A.x+A.w, ay=A.y+A.h/2, bx=B.x, by=B.y+B.h/2;
+      const isX=S.dist&&cross(a,b);
+      x.strokeStyle=isX?'rgba(255,107,107,0.55)':'rgba(120,150,190,0.22)'; x.lineWidth=isX?2:Math.max(1,Math.min(4,mb/4+0.8));
+      if(isX)x.setLineDash([5,4]); x.beginPath(); x.moveTo(ax,ay); x.lineTo(bx,by); x.stroke(); x.setLineDash([]);
+      if(isX){ x.fillStyle='rgba(255,150,150,0.95)'; x.font='8px sans-serif'; x.textAlign='center'; x.fillText('+'+S.nlat+'ms',(ax+bx)/2,(ay+by)/2-3); x.textAlign='left'; }
+      const te0=r.en[a], te1=r.st[b]; if(cursor>=te0 && cursor<=te1 && te1>te0){ const u=(cursor-te0)/(te1-te0);
+        x.fillStyle=isX?'#ff6b6b':COL[U[a].kind]; x.beginPath(); x.arc(ax+(bx-ax)*u, ay+(by-ay)*u, Math.max(2.5,Math.min(6,mb/3+2)),0,7); x.fill(); }
+    });
+    // nodes
+    UNITS.forEach(u=>{ const N=topoNode(u.id); const active=cursor>=r.st[u.id]&&cursor<=r.en[u.id]&&durOf(u.id)>0; const onCrit=r.path.has(u.id);
+      x.fillStyle='#141d2b'; rr(N.x,N.y,N.w,N.h,7); x.fill();
+      x.strokeStyle= active? COL[u.kind] : (onCrit?'rgba(255,255,255,0.35)':'rgba(90,110,140,0.5)'); x.lineWidth=active?2.4:1.3; rr(N.x,N.y,N.w,N.h,7); x.stroke();
+      // active progress fill
+      if(active){ const p=(cursor-r.st[u.id])/Math.max(0.001,durOf(u.id)); x.fillStyle=COL[u.kind]+'33'; rr(N.x,N.y,N.w*Math.min(1,p),N.h,7); x.fill(); }
+      x.fillStyle=COL[u.kind]; x.fillRect(N.x,N.y+6,3,N.h-12);
+      x.fillStyle='#e8edf4'; x.font='10.5px sans-serif'; x.textAlign='left'; x.textBaseline='middle'; x.fillText(u.name, N.x+9, N.y+N.h/2); x.textBaseline='alphabetic';
+      if(S.dist){ const m=machineOf(u.id); x.fillStyle=m==='server'?'rgba(120,200,255,.85)':'rgba(255,180,120,.95)'; x.font='7px sans-serif'; x.textAlign='right'; x.fillText(m==='server'?'SRV':'HMD', N.x+N.w-4, N.y+9); x.textAlign='left'; }
+    });
+
+    // ===== gantt (lower) =====
+    const gy0=H*0.5, gx0=150, gw=W-gx0-24, laneH=(H-gy0-30)/ (UNITS.length+1);
+    x.fillStyle='#9fb0c3'; x.font='11px sans-serif'; x.textAlign='left'; x.fillText('Per-frame schedule (Gantt) — deadline = frame budget',16,gy0-8);
+    const tX=ms=>gx0 + ms/axisMax*gw;
+    // grid every 2ms
+    x.strokeStyle='rgba(90,110,140,0.15)'; x.fillStyle='#6b7d90'; x.font='8px sans-serif';
+    for(let t=0;t<=axisMax;t+=2){ const xx=tX(t); x.beginPath(); x.moveTo(xx,gy0); x.lineTo(xx,H-14); x.stroke(); x.fillText(t+'ms',xx+1,H-4); }
+    // deadline line
+    // deadline lines at each frame period (pipeline shows several)
+    for(let k=1;k*period<=axisMax+0.01 && k<=8;k++){ const dl=tX(k*period); x.strokeStyle='rgba(255,207,92,'+(k===1?0.9:0.35)+')'; x.lineWidth=k===1?2:1; x.setLineDash([5,4]); x.beginPath(); x.moveTo(dl,gy0); x.lineTo(dl,H-14); x.stroke(); x.setLineDash([]); }
+    x.fillStyle='#ffcf5c'; x.font='9px sans-serif'; x.fillText('deadline', tX(period)+3, gy0+9);
+    const miss=r.frameTime>period;
+    // lanes
+    UNITS.forEach((u,i)=>{ const ly=gy0+i*laneH+2; x.fillStyle='#9fb0c3'; x.font='9.5px sans-serif'; x.textAlign='right'; x.textBaseline='middle';
+      x.fillText(u.name.replace(' · ',' '), gx0-6, ly+laneH/2-1); x.textAlign='left'; x.textBaseline='alphabetic';
+      const d=durOf(u.id); if(d<=0) return;
+      const bx0=tX(r.st[u.id]), bw=Math.max(2,tX(r.en[u.id])-tX(r.st[u.id])); const onCrit=r.path.has(u.id);
+      // haptic: show 1kHz ticks across the frame
+      if(u.id==='hap'){ for(let t=r.st[u.id]; t<axisMax; t+=1){ const hx=tX(t); x.fillStyle=COL.hap; x.fillRect(hx, ly+3, Math.max(1.5,tX(t+Math.min(S.hap,1))-hx-1), laneH-8); } }
+      else { const over=r.en[u.id]>period; x.fillStyle= over? '#ff6b6b' : COL[u.kind]; x.globalAlpha=onCrit?1:0.72; rr(bx0,ly+3,bw,laneH-8,4); x.fill(); x.globalAlpha=1;
+        if(onCrit){ x.strokeStyle='rgba(255,255,255,0.6)'; x.lineWidth=1.4; rr(bx0,ly+3,bw,laneH-8,4); x.stroke(); } }
+    });
+    // bus lane
+    const busY=gy0+UNITS.length*laneH+2; x.fillStyle='#9fb0c3'; x.font='9.5px sans-serif'; x.textAlign='right'; x.textBaseline='middle'; x.fillText('Interconnect', gx0-6, busY+laneH/2-1); x.textAlign='left'; x.textBaseline='alphabetic';
+    EDGES.forEach(([a,b,mb])=>{ if(mb<0.2)return; const t0=r.en[a], t1=r.st[b]; if(t1<=t0)return; x.fillStyle=COL[U[a].kind]; x.globalAlpha=0.55; x.fillRect(tX(t0),busY+4,Math.max(2,tX(t1)-tX(t0)),laneH-9); x.globalAlpha=1; });
+    // pipelined successive frames (ghosts) starting each budget -> shows overlap / fill
+    if(S.pipe>1){ for(let k=1;k<S.pipe;k++){ UNITS.forEach((u,i)=>{ const d=durOf(u.id); if(d<=0||u.id==='hap')return; const ly=gy0+i*laneH+2;
+      const gx=tX(r.st[u.id]+k*period); if(gx>gx0+gw)return; const gwd=Math.min(tX(r.en[u.id]+k*period)-gx, gx0+gw-gx);
+      x.globalAlpha=0.2; x.fillStyle=COL[u.kind]; rr(gx,ly+3,Math.max(2,gwd),laneH-8,4); x.fill(); x.globalAlpha=1; }); } }
+    // cursor
+    const cx=tX(cursor); x.strokeStyle='rgba(255,255,255,0.7)'; x.lineWidth=1.5; x.beginPath(); x.moveTo(cx,gy0); x.lineTo(cx,H-14); x.stroke();
+    // frame-time marker
+    const fx=tX(r.frameTime); x.strokeStyle=miss?'#ff6b6b':'#37d6a0'; x.lineWidth=2; x.beginPath(); x.moveTo(fx,gy0); x.lineTo(fx,H-14); x.stroke();
+    x.fillStyle=miss?'#ff6b6b':'#37d6a0'; x.font='9px sans-serif'; x.fillText(r.frameTime.toFixed(1)+'ms', Math.min(gx0+gw-30,fx+3), H-18);
+
+    requestAnimationFrame(draw);
+  }
+  syncUI(); tickStats(); updateMetrics(); requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

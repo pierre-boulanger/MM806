@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>HMD Camera Tracking — SLAM — MM806</title>
+<style>
+  :root{
+    --bg:#0a0e15; --panel:rgba(18,24,33,0.94); --panel2:rgba(30,38,50,0.9);
+    --line:#2a3442; --ink:#e8edf4; --dim:#9fb0c3; --accent:#4ea1ff; --true:#37d6a0; --est:#ffb17a; --map:#5fc9ff; --loop:#ff6bd6; --crit:#ff6b6b; --warn:#ffcf5c; --shadow:0 8px 30px rgba(0,0,0,0.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #cv{border-radius:12px;background:#0e1522;box-shadow:var(--shadow);max-width:96vw;max-height:76vh;touch-action:none}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  #title{position:fixed;top:14px;left:14px;padding:11px 14px;max-width:min(44vw,330px);z-index:6}
+  #title .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  #title h1{margin:3px 0 3px;font-size:17px}#title .sub{font-size:12px;color:var(--dim);line-height:1.4}
+  #metrics{position:fixed;left:14px;top:112px;width:min(90vw,240px);z-index:6;padding:10px 13px}
+  #state{font-size:14px;font-weight:800;padding:6px 10px;border-radius:8px;text-align:center;margin-bottom:8px}
+  #state.ok{background:rgba(55,214,160,.15);color:var(--true)} #state.low{background:rgba(255,207,92,.15);color:var(--warn)} #state.lost{background:rgba(255,107,107,.16);color:var(--crit)}
+  .m{display:flex;justify-content:space-between;font-size:12px;margin:5px 0;color:var(--dim)}
+  .m b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .m b.crit{color:var(--crit)} .m b.warn{color:var(--warn)} .m b.ok{color:var(--true)}
+  #panel{position:fixed;right:14px;top:14px;width:min(92vw,266px);max-height:94vh;display:flex;flex-direction:column;z-index:6}
+  #phead{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;cursor:pointer;user-select:none}
+  #phead b{font-size:13px}#phead .chev{color:var(--dim);transition:transform .2s}
+  #panel.collapsed .chev{transform:rotate(-90deg)}
+  #pbody{overflow:auto;padding:0 12px 12px}#panel.collapsed #pbody{display:none}
+  .sec{border-top:1px solid var(--line);padding:8px 0 4px}.sec:first-child{border-top:none}
+  .sec h3{margin:0 0 6px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--true)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
+  .row label{font-size:12px}.row .rv{font-size:11px;color:var(--dim);min-width:56px;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:106px;height:4px;border-radius:3px;background:#2a3646;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0a0e15}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0a0e15}
+  .sw{position:relative;display:inline-block;width:40px;height:22px;flex:0 0 auto;cursor:pointer}
+  .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}
+  .sw span{position:absolute;inset:0;background:#33404f;border-radius:20px;transition:.15s}
+  .sw span::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#cdd7e2;border-radius:50%;transition:.15s}
+  .sw input:checked + span{background:var(--accent)}.sw input:checked + span::before{transform:translateX(18px);background:#fff}
+  .segw{display:flex;gap:6px}
+  .seg{flex:1;padding:6px 4px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:11.5px;font-weight:600;cursor:pointer;text-align:center}
+  .seg.sel{border-color:var(--accent);background:rgba(78,161,255,.14)}
+  .btn{width:100%;padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:12.5px;font-weight:600;cursor:pointer;margin-top:6px}
+  .btn:hover{border-color:var(--accent)}
+  #hint{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:6;font-size:11.5px;color:var(--dim);background:rgba(10,14,21,.6);padding:4px 11px;border-radius:20px;border:1px solid var(--line)}
+  @media (max-width:920px){ #metrics{display:none} }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv" width="900" height="660"></canvas></div>
+
+<div id="title" class="card">
+  <div class="tag">MM806 · VR Tracking · SLAM</div>
+  <h1>HMD camera tracking (SLAM)</h1>
+  <div class="sub">The headset sees landmarks in its camera FOV, maps them, and localises. Watch the estimate (orange) drift from truth (green), then snap back on loop closure.</div>
+</div>
+
+<div id="metrics" class="card">
+  <div id="state" class="ok">TRACKING</div>
+  <div class="m"><span>Features in view</span><b id="feats">—</b></div>
+  <div class="m"><span>Map landmarks</span><b id="mapN">—</b></div>
+  <div class="m"><span>Drift (est vs true)</span><b id="drift">—</b></div>
+  <div class="m"><span>Pose uncertainty</span><b id="uncM">—</b></div>
+  <div class="m"><span>Camera / IMU</span><b id="camHzM">—</b></div>
+  <div class="m"><span>IMU-only drift</span><b id="imuD">—</b></div>
+  <div class="m"><span>Keyframes</span><b id="kf">—</b></div>
+  <div class="m"><span>Loop closures</span><b id="loops">—</b></div>
+  <div class="m"><span>Common landmarks</span><b id="common">—</b></div>
+  <div class="m"><span>Shared-map align</span><b id="align">—</b></div>
+</div>
+
+<div id="panel" class="card">
+  <div id="phead"><b>Tracking</b><span class="chev">▾</span></div>
+  <div id="pbody">
+    <div class="sec"><h3>Drive</h3>
+      <div class="segw" id="modeSeg"><button class="seg" data-mode="auto">Auto loop</button><button class="seg" data-mode="manual">Steer (click)</button></div>
+      <div class="row" style="margin-top:6px"><label for="play">Run</label><label class="sw"><input type="checkbox" id="play" checked><span></span></label></div>
+      <div class="row"><label for="spd">Speed</label><input type="range" id="spd" min="0.4" max="4" step="0.1" value="1.6"><span class="rv" id="spdV">1.6 m/s</span></div>
+    </div>
+    <div class="sec"><h3>Camera</h3>
+      <div class="row"><label for="fov">Field of view</label><input type="range" id="fov" min="40" max="140" value="80"><span class="rv" id="fovV">80°</span></div>
+      <div class="row"><label for="rng">Range</label><input type="range" id="rng" min="2" max="10" step="0.5" value="6"><span class="rv" id="rngV">6 m</span></div>
+      <div class="row"><label for="dens">Feature density</label><input type="range" id="dens" min="20" max="220" step="10" value="110"><span class="rv" id="densV">110</span></div>
+    </div>
+    <div class="sec"><h3>Sensor fusion (VIO)</h3>
+      <div class="row"><label for="tImu">IMU (1 kHz) + vision</label><label class="sw"><input type="checkbox" id="tImu" checked><span></span></label></div>
+      <div class="row"><label for="camHz">Camera update rate</label><input type="range" id="camHz" min="8" max="90" step="1" value="30"><span class="rv" id="camHzV">30 Hz</span></div>
+      <div class="row"><label for="tWalls">Occluding walls</label><label class="sw"><input type="checkbox" id="tWalls" checked><span></span></label></div>
+    </div>
+    <div class="sec"><h3>Noise</h3>
+      <div class="row"><label for="odo">IMU bias / drift</label><input type="range" id="odo" min="0" max="20" value="7"><span class="rv" id="odoV">0.07</span></div>
+      <div class="row"><label for="meas">Measurement</label><input type="range" id="meas" min="0" max="20" value="5"><span class="rv" id="measV">0.05</span></div>
+    </div>
+    <div class="sec"><h3>Multi-user</h3>
+      <div class="row"><label for="tTwo">2 headsets (shared map)</label><label class="sw"><input type="checkbox" id="tTwo"><span></span></label></div>
+    </div>
+    <div class="sec"><h3>Show</h3>
+      <div class="row"><label for="tLoop">Loop closure</label><label class="sw"><input type="checkbox" id="tLoop" checked><span></span></label></div>
+      <div class="row"><label for="tBlank">Feature-poor zone</label><label class="sw"><input type="checkbox" id="tBlank" checked><span></span></label></div>
+      <div class="row"><label for="tRays">Observation rays</label><label class="sw"><input type="checkbox" id="tRays" checked><span></span></label></div>
+      <div class="row"><label for="tMap">Estimated map</label><label class="sw"><input type="checkbox" id="tMap" checked><span></span></label></div>
+      <div class="row"><label for="tUnc">Uncertainty</label><label class="sw"><input type="checkbox" id="tUnc" checked><span></span></label></div>
+      <button class="btn" id="reset">Reset map &amp; path</button>
+    </div>
+  </div>
+</div>
+
+<div id="hint">green = ground truth · orange = SLAM estimate · in Steer mode, click to set a target</div>
+
+<script id="appcode">
+"use strict";
+(function(){
+  const $=id=>document.getElementById(id); const cv=$('cv'), g=cv.getContext('2d');
+  const WORLD={w:20,h:14};
+  const S={ mode:'auto', play:true, speed:1.6, fov:80, range:6, dens:110, odo:0.07, meas:0.05,
+    loop:true, blank:true, rays:true, showMap:true, showUnc:true, imu:true, camHz:30, walls:true, two:false };
+  const rad=d=>d*Math.PI/180; const angN=a=>{ while(a>Math.PI)a-=2*Math.PI; while(a<-Math.PI)a+=2*Math.PI; return a; };
+  const randn=()=>(Math.random()+Math.random()+Math.random()-1.5)*1.35;
+  // occluding walls (segments)
+  const WALLS=[ {x1:7,y1:2.2,x2:7,y2:6}, {x1:7,y1:6,x2:10.5,y2:6}, {x1:13,y1:8,x2:13,y2:11.8}, {x1:4,y1:10,x2:8,y2:10} ];
+  function segInt(ax,ay,bx,by,cx,cy,dx,dy){ const d=(bx-ax)*(dy-cy)-(by-ay)*(dx-cx); if(Math.abs(d)<1e-9)return false;
+    const t=((cx-ax)*(dy-cy)-(cy-ay)*(dx-cx))/d, u=((cx-ax)*(by-ay)-(cy-ay)*(bx-ax))/d; return t>0&&t<1&&u>0&&u<1; }
+  function occluded(px,py,lm){ for(const w of WALLS){ if(segInt(px,py,lm.tx,lm.ty,w.x1,w.y1,w.x2,w.y2)) return true; } return false; }
+  // second headset (B) has its own coordinate frame: world rotated by phi about the room centre
+  const BF={phi:35*Math.PI/180, cx:WORLD.w/2, cy:WORLD.h/2};
+  function w2b(x,y){ const dx=x-BF.cx,dy=y-BF.cy,c=Math.cos(-BF.phi),s=Math.sin(-BF.phi); return {x:BF.cx+dx*c-dy*s, y:BF.cy+dx*s+dy*c}; }
+  function b2w(al,x,y){ const c=Math.cos(al.th),s=Math.sin(al.th); return {x:c*x-s*y+al.tx, y:s*x+c*y+al.ty}; }
+  function umeyama(pairs){ const n=pairs.length; if(n<3)return null; let bcx=0,bcy=0,acx=0,acy=0;
+    pairs.forEach(p=>{bcx+=p.bx;bcy+=p.by;acx+=p.ax;acy+=p.ay;}); bcx/=n;bcy/=n;acx/=n;acy/=n;
+    let num=0,den=0; pairs.forEach(p=>{ const bx=p.bx-bcx,by=p.by-bcy,ax=p.ax-acx,ay=p.ay-acy; num+=bx*ay-by*ax; den+=bx*ax+by*ay; });
+    const th=Math.atan2(num,den),c=Math.cos(th),s=Math.sin(th),tx=acx-(c*bcx-s*bcy),ty=acy-(s*bcx+c*bcy);
+    let e=0; pairs.forEach(p=>{ const x=c*p.bx-s*p.by+tx,y=s*p.bx+c*p.by+ty; e+=(x-p.ax)**2+(y-p.ay)**2; });
+    return {ok:true,th,tx,ty,rms:Math.sqrt(e/n)}; }
+
+  // ellipse loop path for auto drive
+  const PC={cx:WORLD.w/2, cy:WORLD.h/2, ax:WORLD.w*0.33, ay:WORLD.h*0.30};
+  const PER=2*Math.PI*Math.sqrt((PC.ax*PC.ax+PC.ay*PC.ay)/2);
+  function pathPt(t){ const a=t*2*Math.PI; return {x:PC.cx+PC.ax*Math.cos(a), y:PC.cy+PC.ay*Math.sin(a), th:Math.atan2(PC.ay*Math.cos(a), -PC.ax*Math.sin(a))}; }
+
+  const BLANK={x:WORLD.w*0.06,y:WORLD.h*0.30,w:WORLD.w*0.20,h:WORLD.h*0.40};
+  let LM=[], truePose={x:0,y:0,th:0}, estPose={x:0,y:0,th:0}, imuPose={x:0,y:0,th:0}, truePath=[], estPath=[], P=0.1, tParam=0,
+      keyframes=[], loops=[], loopCount=0, mapCount=0, feats=0, target=null, lcCool=0, lastState='TRACKING', camAccum=0, visFlash=0,
+      bParam=0.5, bTrue={x:0,y:0,th:0}, bPath=[], align={ok:false,th:0,tx:0,ty:0,rms:0}, commonN=0;
+
+  function genLM(){ LM=[]; let id=0; for(let i=0;i<S.dens;i++){ const x=0.6+Math.random()*(WORLD.w-1.2), y=0.6+Math.random()*(WORLD.h-1.2);
+    if(S.blank && x>BLANK.x&&x<BLANK.x+BLANK.w && y>BLANK.y&&y<BLANK.y+BLANK.h) continue;
+    LM.push({id:id++, tx:x, ty:y, lz:0.3+Math.random()*2.2, seen:false, mx:0,my:0, obs:0, vis:false, bseen:false, bx:0, by:0}); } }
+  function reset(){ genLM(); const p=pathPt(0); truePose={x:p.x,y:p.y,th:p.th}; estPose={x:p.x,y:p.y,th:p.th}; imuPose={x:p.x,y:p.y,th:p.th};
+    truePath=[]; estPath=[]; P=0.1; tParam=0; keyframes=[]; loops=[]; loopCount=0; mapCount=0; feats=0; target=null; lcCool=0; camAccum=0; visFlash=0;
+    bParam=0.5; { const b=pathPt(0.5); bTrue={x:b.x,y:b.y,th:b.th}; } bPath=[]; align={ok:false,th:0,tx:0,ty:0,rms:0}; commonN=0; }
+  reset();
+
+  function loopClose(){ const corr={x:truePose.x-estPose.x, y:truePose.y-estPose.y};
+    const n=estPath.length; for(let i=0;i<n;i++){ const w=i/Math.max(1,n-1); estPath[i].x+=corr.x*w; estPath[i].y+=corr.y*w; }
+    loops.push({ax:estPose.x,ay:estPose.y, bx:truePose.x,by:truePose.y, life:1});
+    LM.forEach(lm=>{ if(lm.seen){ lm.mx+=(lm.tx-lm.mx)*0.6; lm.my+=(lm.ty-lm.my)*0.6; } });   // loop closure also tightens the map (bundle-adjustment abstraction)
+    estPose.x=truePose.x; estPose.y=truePose.y; estPose.th=truePose.th; P=0.05; loopCount++; lcCool=1.5; }
+
+  function step(dt){
+    if(!S.play) return;
+    // --- advance ground truth ---
+    let nt;
+    if(S.mode==='auto'){ const prev=tParam; tParam += S.speed*dt/PER; if(tParam>=1){ tParam-=1; if(S.loop) loopClose(); } nt=pathPt(tParam); }
+    else { const tg=target||{x:truePose.x+Math.cos(truePose.th),y:truePose.y+Math.sin(truePose.th)};
+      const dx=tg.x-truePose.x, dy=tg.y-truePose.y, d=Math.hypot(dx,dy); const des=Math.atan2(dy,dx);
+      const nth=truePose.th+angN(des-truePose.th)*Math.min(1,dt*3.5); const stp=Math.min(d, S.speed*dt);
+      nt={x:truePose.x+Math.cos(nth)*stp, y:truePose.y+Math.sin(nth)*stp, th:nth}; }
+    const dTrans=Math.hypot(nt.x-truePose.x, nt.y-truePose.y), dRot=angN(nt.th-truePose.th);
+    truePose=nt; truePath.push({x:nt.x,y:nt.y}); if(truePath.length>3000)truePath.shift();
+    // --- IMU propagation (high-rate dead reckoning); vision corrects only at camera rate ---
+    function imuStep(p){ p.th=angN(p.th + dRot + randn()*S.odo*0.5); const d=dTrans*(1+randn()*S.odo); p.x+=Math.cos(p.th)*d; p.y+=Math.sin(p.th)*d; }
+    camAccum += dt; const doVision = camAccum >= 1/S.camHz; if(doVision) camAccum -= 1/S.camHz;
+    if(S.imu){ imuStep(estPose); imuStep(imuPose); P += S.odo*dTrans*0.8 + 0.0004; }
+    else if(doVision){ imuStep(estPose); imuPose.x=estPose.x; imuPose.y=estPose.y; imuPose.th=estPose.th; P += S.odo*dTrans*1.4 + 0.001; }
+    // --- observe landmarks: FOV + range + wall occlusion (computed every frame for display) ---
+    const fov=rad(S.fov);
+    LM.forEach(lm=>{ const dx=lm.tx-truePose.x, dy=lm.ty-truePose.y; const rng=Math.hypot(dx,dy); const bear=angN(Math.atan2(dy,dx)-truePose.th);
+      lm.vis = rng<S.range && Math.abs(bear)<fov/2 && (!S.walls || !occluded(truePose.x,truePose.y,lm)); });
+    let nObs=LM.reduce((a,l)=>a+(l.vis?1:0),0); feats=nObs;
+    // --- vision update (map build + map-relative correction) at camera rate ---
+    let nMap=0;
+    if(doVision){ visFlash=1;
+      LM.forEach(lm=>{ if(!lm.vis)return; const dx=lm.tx-truePose.x,dy=lm.ty-truePose.y; const rng=Math.hypot(dx,dy),bear=angN(Math.atan2(dy,dx)-truePose.th);
+        const mR=rng*(1+randn()*S.meas*0.3), mB=bear+randn()*S.meas*0.25; const wx=estPose.x+Math.cos(estPose.th+mB)*mR, wy=estPose.y+Math.sin(estPose.th+mB)*mR;
+        if(!lm.seen){ lm.seen=true; lm.mx=wx; lm.my=wy; lm.obs=1; mapCount++; } else { lm.obs++; nMap++; lm.mx+=(wx-lm.mx)*0.06; lm.my+=(wy-lm.my)*0.06; } });
+      if(nMap>0){ let ex=0,ey=0,c=0; LM.forEach(lm=>{ if(lm.vis&&lm.obs>1){ const dx=lm.tx-truePose.x,dy=lm.ty-truePose.y; const rng=Math.hypot(dx,dy), bear=angN(Math.atan2(dy,dx)-truePose.th);
+          ex+= lm.mx - Math.cos(estPose.th+bear)*rng; ey+= lm.my - Math.sin(estPose.th+bear)*rng; c++; } });
+        if(c){ ex/=c; ey/=c; const gg=Math.min(0.5,0.06*c); estPose.x+=(ex-estPose.x)*gg; estPose.y+=(ey-estPose.y)*gg; P*=(1-Math.min(0.65,gg)); } }
+      imuPose.x=estPose.x; imuPose.y=estPose.y; imuPose.th=estPose.th;   // IMU re-anchored to fused pose at each visual fix
+    }
+    if(visFlash>0) visFlash-=dt*4;
+    P=Math.max(0.02, Math.min(6, P));
+    estPath.push({x:estPose.x,y:estPose.y}); if(estPath.length>3000)estPath.shift();
+    // --- second headset (B): own trajectory, own-frame map, frame alignment ---
+    if(S.two){ bParam+=S.speed*dt/PER; if(bParam>=1)bParam-=1; const bp=pathPt(bParam); bTrue={x:bp.x,y:bp.y,th:bp.th};
+      bPath.push({x:bTrue.x,y:bTrue.y}); if(bPath.length>3000)bPath.shift();
+      LM.forEach(lm=>{ const dx=lm.tx-bTrue.x,dy=lm.ty-bTrue.y; const rng=Math.hypot(dx,dy); const bear=angN(Math.atan2(dy,dx)-bTrue.th);
+        if(rng<S.range && Math.abs(bear)<fov/2 && (!S.walls||!occluded(bTrue.x,bTrue.y,lm))){ const bf=w2b(lm.tx,lm.ty);
+          if(!lm.bseen){ lm.bseen=true; lm.bx=bf.x+randn()*S.meas*0.25; lm.by=bf.y+randn()*S.meas*0.25; } else { lm.bx+=(bf.x-lm.bx)*0.05; lm.by+=(bf.y-lm.by)*0.05; } } });
+      const pairs=[]; LM.forEach(lm=>{ if(lm.seen&&lm.bseen) pairs.push({bx:lm.bx,by:lm.by,ax:lm.mx,ay:lm.my}); }); commonN=pairs.length;
+      if(commonN>=6){ const al=umeyama(pairs); if(al) align=al; } else align.ok=false;
+    }
+    // --- keyframes + manual loop closure (revisit) ---
+    if(estPath.length%18===0){ keyframes.push({x:estPose.x,y:estPose.y,i:estPath.length}); if(keyframes.length>400)keyframes.shift(); }
+    if(lcCool>0) lcCool-=dt;
+    if(S.mode==='manual' && S.loop && lcCool<=0 && nMap>=3){ for(let k=0;k<keyframes.length;k++){ const kf=keyframes[k];
+      if(estPath.length-kf.i>240 && Math.hypot(kf.x-estPose.x,kf.y-estPose.y)<0.8){ loopClose(); break; } } }
+    // --- state ---
+    lastState = nObs>=6?'TRACKING' : nObs>=2?'LOW' : 'LOST';
+    // fade loop links
+    loops.forEach(l=>l.life-=dt*0.4); loops=loops.filter(l=>l.life>0);
+  }
+
+  // ---- controls ----
+  function bindR(id,vid,fmt,fn){const e=$(id),v=$(vid);const u=()=>{fn(parseFloat(e.value));v.textContent=fmt(parseFloat(e.value));};e.addEventListener('input',u);v.textContent=fmt(parseFloat(e.value));}
+  bindR('spd','spdV',x=>x.toFixed(1)+' m/s',v=>S.speed=v);
+  bindR('fov','fovV',x=>x+'°',v=>S.fov=v); bindR('rng','rngV',x=>x+' m',v=>S.range=v);
+  bindR('dens','densV',x=>String(x),v=>{S.dens=v; reset();});
+  bindR('odo','odoV',x=>(x/100).toFixed(2),v=>S.odo=v/100);
+  bindR('meas','measV',x=>(x/100).toFixed(2),v=>S.meas=v/100);
+  bindR('camHz','camHzV',x=>x+' Hz',v=>S.camHz=v);
+  function bindT(id,fn){const e=$(id);const u=()=>fn(e.checked);e.addEventListener('change',u);u();}
+  bindT('tLoop',v=>S.loop=v); bindT('tBlank',v=>{S.blank=v; reset();}); bindT('tRays',v=>S.rays=v); bindT('tMap',v=>S.showMap=v); bindT('tUnc',v=>S.showUnc=v);
+  bindT('tImu',v=>S.imu=v); bindT('tWalls',v=>S.walls=v); bindT('tTwo',v=>{S.two=v; if(v)reset();});
+  $('play').addEventListener('change',()=>S.play=$('play').checked);
+  document.querySelectorAll('.seg[data-mode]').forEach(b=>b.addEventListener('click',()=>{ S.mode=b.dataset.mode;
+    document.querySelectorAll('.seg[data-mode]').forEach(z=>z.classList.toggle('sel',z===b)); }));
+  document.querySelector('.seg[data-mode="auto"]').classList.add('sel');
+  $('reset').addEventListener('click',reset);
+  $('phead').addEventListener('click',()=>$('panel').classList.toggle('collapsed'));
+
+  // ---- view transform ----
+  let VX={};
+  function layout(){ const W=cv.width,H=cv.height; const barH=196; const mh=H-barH-14; const pad=14;
+    const sc=Math.min((W-2*pad)/WORLD.w, (mh-2*pad)/WORLD.h); VX={sc, ox:(W-WORLD.w*sc)/2, oy:pad, mh, barY:H-barH}; }
+  const wx=x=>VX.ox+x*VX.sc, wy=y=>VX.oy+y*VX.sc;
+  const toWorld=(cx,cy)=>({x:(cx-VX.ox)/VX.sc, y:(cy-VX.oy)/VX.sc});
+
+  // ---- interaction (steer) ----
+  function evtXY(e){ const r=cv.getBoundingClientRect(); return [ (e.clientX-r.left)*cv.width/r.width, (e.clientY-r.top)*cv.height/r.height ]; }
+  cv.addEventListener('pointerdown',e=>{ if(S.mode!=='manual')return; const [cx,cy]=evtXY(e); const p=toWorld(cx,cy);
+    if(p.x>0&&p.x<WORLD.w&&p.y>0&&p.y<WORLD.h) target={x:p.x,y:p.y}; });
+
+  function tri(px,py,th,size,color,dash){ g.save(); g.translate(px,py); g.rotate(th); g.strokeStyle=color; g.fillStyle=color;
+    if(dash)g.setLineDash([4,3]); g.lineWidth=2; g.beginPath(); g.moveTo(size,0); g.lineTo(-size*0.6,size*0.6); g.lineTo(-size*0.6,-size*0.6); g.closePath();
+    if(dash){g.globalAlpha=0.9;g.stroke();}else{g.globalAlpha=0.85;g.fill();} g.globalAlpha=1; g.setLineDash([]); g.restore(); }
+
+  function draw(now){
+    layout(); const W=cv.width,H=cv.height; g.clearRect(0,0,W,H);
+    // world border
+    g.strokeStyle='#2b3a4d'; g.lineWidth=2; g.strokeRect(wx(0),wy(0),WORLD.w*VX.sc,WORLD.h*VX.sc);
+    // grid
+    g.strokeStyle='rgba(80,100,130,0.10)'; g.lineWidth=1; for(let i=1;i<WORLD.w;i++){ g.beginPath(); g.moveTo(wx(i),wy(0)); g.lineTo(wx(i),wy(WORLD.h)); g.stroke(); }
+    for(let i=1;i<WORLD.h;i++){ g.beginPath(); g.moveTo(wx(0),wy(i)); g.lineTo(wx(WORLD.w),wy(i)); g.stroke(); }
+    // occluding walls
+    if(S.walls){ g.strokeStyle='#7d8a99'; g.lineWidth=5; g.lineCap='round'; WALLS.forEach(w=>{ g.beginPath(); g.moveTo(wx(w.x1),wy(w.y1)); g.lineTo(wx(w.x2),wy(w.y2)); g.stroke(); }); g.lineCap='butt'; }
+    // feature-poor zone
+    if(S.blank){ g.fillStyle='rgba(255,107,107,0.06)'; g.strokeStyle='rgba(255,107,107,0.3)'; g.setLineDash([4,4]); g.fillRect(wx(BLANK.x),wy(BLANK.y),BLANK.w*VX.sc,BLANK.h*VX.sc); g.strokeRect(wx(BLANK.x),wy(BLANK.y),BLANK.w*VX.sc,BLANK.h*VX.sc); g.setLineDash([]);
+      g.fillStyle='rgba(255,150,150,0.6)'; g.font='9px sans-serif'; g.textAlign='center'; g.fillText('feature-poor', wx(BLANK.x+BLANK.w/2), wy(BLANK.y)+12); }
+
+    // trajectories
+    function poly(arr,col,w,dash){ if(arr.length<2)return; g.strokeStyle=col; g.lineWidth=w; if(dash)g.setLineDash(dash); g.beginPath(); g.moveTo(wx(arr[0].x),wy(arr[0].y)); for(let i=1;i<arr.length;i++)g.lineTo(wx(arr[i].x),wy(arr[i].y)); g.stroke(); g.setLineDash([]); }
+    poly(truePath,'rgba(55,214,160,0.85)',2); poly(estPath,'rgba(255,177,122,0.9)',2,[5,3]);
+
+    // loop closure links
+    loops.forEach(l=>{ g.strokeStyle='rgba(255,107,214,'+Math.min(1,l.life)+')'; g.lineWidth=2; g.setLineDash([3,3]); g.beginPath(); g.moveTo(wx(l.ax),wy(l.ay)); g.lineTo(wx(l.bx),wy(l.by)); g.stroke(); g.setLineDash([]);
+      g.fillStyle='rgba(255,107,214,'+Math.min(1,l.life)+')'; g.font='9px sans-serif'; g.textAlign='center'; g.fillText('loop closure', wx((l.ax+l.bx)/2), wy((l.ay+l.by)/2)-4); });
+
+    // landmarks
+    LM.forEach(lm=>{ // true position
+      g.fillStyle= lm.vis? 'rgba(230,240,250,0.9)':'rgba(120,140,160,0.5)'; g.beginPath(); g.arc(wx(lm.tx),wy(lm.ty),lm.vis?2.6:1.8,0,7); g.fill();
+      if(S.showMap && lm.seen){ g.fillStyle='rgba(95,201,255,0.9)'; g.beginPath(); g.arc(wx(lm.mx),wy(lm.my),2.2,0,7); g.fill();
+        g.strokeStyle='rgba(95,201,255,0.25)'; g.lineWidth=1; g.beginPath(); g.moveTo(wx(lm.tx),wy(lm.ty)); g.lineTo(wx(lm.mx),wy(lm.my)); g.stroke(); } });
+
+    // observation rays + FOV cone (from true camera)
+    const fov=rad(S.fov);
+    g.fillStyle='rgba(55,214,160,0.07)'; g.strokeStyle='rgba(55,214,160,0.25)'; g.lineWidth=1;
+    g.beginPath(); g.moveTo(wx(truePose.x),wy(truePose.y));
+    for(let a=-fov/2;a<=fov/2+0.001;a+=fov/24){ g.lineTo(wx(truePose.x+Math.cos(truePose.th+a)*S.range), wy(truePose.y+Math.sin(truePose.th+a)*S.range)); }
+    g.closePath(); g.fill(); g.stroke();
+    if(S.rays){ LM.forEach(lm=>{ if(lm.vis){ g.strokeStyle= lm.seen?'rgba(95,201,255,0.5)':'rgba(255,207,92,0.6)'; g.lineWidth=1; g.beginPath(); g.moveTo(wx(truePose.x),wy(truePose.y)); g.lineTo(wx(lm.tx),wy(lm.ty)); g.stroke(); } }); }
+
+    // uncertainty ellipse on estimate
+    if(S.showUnc){ const rr=Math.sqrt(P)*VX.sc*0.5+3; g.strokeStyle='rgba(255,177,122,0.55)'; g.lineWidth=1.5; g.setLineDash([2,3]); g.beginPath(); g.arc(wx(estPose.x),wy(estPose.y),rr,0,7); g.stroke(); g.setLineDash([]); }
+
+    // ===== second headset B (shared-map / co-location) =====
+    if(S.two){ poly(bPath,'rgba(197,155,255,0.55)',2);
+      LM.forEach(lm=>{ if(!lm.bseen)return; const p= align.ok? b2w(align,lm.bx,lm.by) : {x:lm.bx,y:lm.by};
+        g.fillStyle= align.ok?'rgba(197,155,255,0.85)':'rgba(197,155,255,0.4)'; g.beginPath(); g.arc(wx(p.x),wy(p.y),2,0,7); g.fill(); });
+      tri(wx(bTrue.x),wy(bTrue.y),bTrue.th,10,'#c59bff',false);
+      // where headset A believes B is (its avatar), in A's frame
+      const bf=w2b(bTrue.x,bTrue.y); const av= align.ok? b2w(align,bf.x,bf.y) : {x:bf.x,y:bf.y};
+      g.strokeStyle='#c59bff'; g.lineWidth=2; g.beginPath(); g.arc(wx(av.x),wy(av.y),8,0,7); g.stroke();
+      g.fillStyle='#c59bff'; g.font='9px sans-serif'; g.textAlign='center'; g.fillText(align.ok?'peer (co-located)':'peer (misaligned)', wx(av.x), wy(av.y)-12); g.textAlign='left';
+      if(align.ok){ g.strokeStyle='rgba(197,155,255,0.6)'; g.setLineDash([3,3]); g.beginPath(); g.moveTo(wx(estPose.x),wy(estPose.y)); g.lineTo(wx(av.x),wy(av.y)); g.stroke(); g.setLineDash([]); } }
+
+    // cameras
+    tri(wx(truePose.x),wy(truePose.y),truePose.th,10,'#37d6a0',false);
+    tri(wx(estPose.x),wy(estPose.y),estPose.th,10,'#ffb17a',true);
+    // IMU-only pose (dead-reckoning since last visual fix) + link to fused estimate
+    if(S.imu){ g.strokeStyle='rgba(255,107,107,0.7)'; g.lineWidth=1; g.beginPath(); g.moveTo(wx(estPose.x),wy(estPose.y)); g.lineTo(wx(imuPose.x),wy(imuPose.y)); g.stroke();
+      g.strokeStyle='#ff6b6b'; g.lineWidth=1.5; g.beginPath(); g.arc(wx(imuPose.x),wy(imuPose.y),4,0,7); g.stroke(); }
+    // vision-fix flash on the estimate
+    if(visFlash>0){ g.strokeStyle='rgba(95,201,255,'+visFlash+')'; g.lineWidth=2; g.beginPath(); g.arc(wx(estPose.x),wy(estPose.y),12+(1-visFlash)*10,0,7); g.stroke(); }
+
+    // ===== first-person 3D camera view (perspective projection) =====
+    const fy0=VX.barY, fh=cv.height-fy0-8, fx0=14, fw=cv.width-28, eyeH=1.6;
+    g.fillStyle='#0a1420'; g.strokeStyle='#2b3a4d'; g.lineWidth=1; g.fillRect(fx0,fy0,fw,fh); g.strokeRect(fx0,fy0,fw,fh);
+    const fovH=rad(S.fov), fovV=2*Math.atan(Math.tan(fovH/2)*fh/fw);
+    const uOf=b=> fx0 + (b/(fovH/2)*0.5+0.5)*fw, vOf=e=> fy0 + (0.5 - (e/(fovV/2))*0.5)*fh;
+    // clip region to the image
+    g.save(); g.beginPath(); g.rect(fx0,fy0,fw,fh); g.clip();
+    // ground gradient + horizon
+    g.fillStyle='rgba(40,55,75,0.5)'; g.fillRect(fx0,vOf(0),fw,fy0+fh-vOf(0));
+    g.strokeStyle='rgba(120,150,190,0.35)'; g.beginPath(); g.moveTo(fx0,vOf(0)); g.lineTo(fx0+fw,vOf(0)); g.stroke();
+    // walls as occluder quads
+    if(S.walls){ WALLS.forEach(w=>{ const es=[[w.x1,w.y1],[w.x2,w.y2]].map(p=>{ const dx=p[0]-truePose.x,dy=p[1]-truePose.y; const dist=Math.hypot(dx,dy); const b=angN(Math.atan2(dy,dx)-truePose.th); return {dist,b,fine:Math.abs(b)<fovH*0.9}; });
+      if(es[0].dist<0.2||es[1].dist<0.2) return; if(!es[0].fine&&!es[1].fine) return;
+      const u1=uOf(Math.max(-fovH/2,Math.min(fovH/2,es[0].b))), u2=uOf(Math.max(-fovH/2,Math.min(fovH/2,es[1].b)));
+      const tv1=vOf(Math.atan2(2.4-eyeH,es[0].dist)), bv1=vOf(Math.atan2(0-eyeH,es[0].dist)), tv2=vOf(Math.atan2(2.4-eyeH,es[1].dist)), bv2=vOf(Math.atan2(0-eyeH,es[1].dist));
+      g.fillStyle='rgba(125,138,153,0.55)'; g.beginPath(); g.moveTo(u1,tv1); g.lineTo(u2,tv2); g.lineTo(u2,bv2); g.lineTo(u1,bv1); g.closePath(); g.fill(); }); }
+    // landmarks
+    let vc=0; LM.forEach(lm=>{ if(!lm.vis)return; const dx=lm.tx-truePose.x,dy=lm.ty-truePose.y; const dist=Math.hypot(dx,dy);
+      const b=angN(Math.atan2(dy,dx)-truePose.th); if(Math.abs(b)>fovH/2)return; const e=Math.atan2(lm.lz-eyeH,dist); if(Math.abs(e)>fovV/2)return; vc++;
+      const u=uOf(b), v=vOf(e), r=Math.max(1.4,4.5/dist); g.fillStyle=lm.seen?'#5fc9ff':'#ffcf5c'; g.beginPath(); g.arc(u,v,r,0,7); g.fill();
+      if(lm.seen){ g.strokeStyle='rgba(95,201,255,0.4)'; g.lineWidth=1; g.beginPath(); g.arc(u,v,r+2,0,7); g.stroke(); } });
+    g.restore();
+    g.fillStyle='#9fb0c3'; g.font='9px sans-serif'; g.textAlign='left'; g.fillText('headset camera view (perspective) — blue = mapped, yellow = new', fx0+6, fy0+12);
+    g.textAlign='right'; g.fillText(vc+' features tracked', fx0+fw-6, fy0+12); g.textAlign='left';
+
+    updateMetrics();
+  }
+
+  function updateMetrics(){ const drift=Math.hypot(estPose.x-truePose.x, estPose.y-truePose.y);
+    const st=$('state'); st.className= lastState==='TRACKING'?'ok':lastState==='LOW'?'low':'lost'; st.textContent= lastState==='LOST'?'TRACKING LOST':lastState;
+    const fe=$('feats'); fe.textContent=feats; fe.className='b '+(feats>=6?'ok':feats>=2?'warn':'crit');
+    $('mapN').textContent=mapCount;
+    const dr=$('drift'); dr.textContent=drift.toFixed(3)+' m'; dr.className='b '+(drift>1?'crit':drift>0.4?'warn':'ok');
+    $('uncM').textContent='±'+Math.sqrt(P).toFixed(3)+' m';
+    $('camHzM').textContent=(S.imu?'1 kHz / ':'— / ')+S.camHz+' Hz';
+    const imd=$('imuD'); const idr=Math.hypot(imuPose.x-estPose.x,imuPose.y-estPose.y); imd.textContent=S.imu?(idr*1000).toFixed(0)+' mm':'—'; imd.className='b '+(idr>0.3?'warn':'ok');
+    $('kf').textContent=keyframes.length; $('loops').textContent=loopCount;
+    $('common').textContent = S.two? commonN : '—';
+    const al=$('align'); if(!S.two){ al.textContent='—'; al.className='b'; } else if(align.ok){ al.textContent='aligned · '+align.rms.toFixed(2)+' m'; al.className='b ok'; } else { al.textContent='not aligned'; al.className='b warn'; }
+  }
+
+  let last=performance.now();
+  function frame(now){ const dt=Math.max(0,Math.min(0.05,(now-last)/1000)); last=now; step(dt); draw(now); requestAnimationFrame(frame); }
+  layout(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

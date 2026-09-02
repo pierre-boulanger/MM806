@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Contact-Lens Display Optics — MM806</title>
+<style>
+  :root{
+    --bg:#0b0f16; --panel:rgba(18,24,33,0.94); --panel2:rgba(30,38,50,0.9);
+    --line:#2a3442; --ink:#e8edf4; --dim:#9fb0c3; --accent:#4ea1ff; --accent2:#37d6a0; --warn:#ff6b6b; --gold:#ffcf5c; --shadow:0 8px 30px rgba(0,0,0,0.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  #wrap{position:fixed;inset:0}canvas{display:block}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  #title{position:fixed;top:14px;left:14px;padding:12px 15px;max-width:min(54vw,440px);z-index:6}
+  #title .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  #title h1{margin:3px 0 3px;font-size:19px}#title .sub{font-size:12.5px;color:var(--dim);line-height:1.4}
+  #panel{position:fixed;right:14px;top:14px;width:min(92vw,282px);max-height:92vh;display:flex;flex-direction:column;z-index:6}
+  #phead{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;cursor:pointer;user-select:none}
+  #phead b{font-size:13px}#phead .chev{color:var(--dim);transition:transform .2s}
+  #panel.collapsed .chev{transform:rotate(-90deg)}
+  #pbody{overflow:auto;padding:0 12px 12px}#panel.collapsed #pbody{display:none}
+  .sec{border-top:1px solid var(--line);padding:9px 0 5px}.sec:first-child{border-top:none}
+  .sec h3{margin:0 0 7px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--accent2)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
+  .row label{font-size:12.5px}.row .rv{font-size:11.5px;color:var(--dim);min-width:56px;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:118px;height:4px;border-radius:3px;background:#2a3646;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0b0f16}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0b0f16}
+  .sw{position:relative;display:inline-block;width:40px;height:22px;flex:0 0 auto;cursor:pointer}
+  .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}
+  .sw span{position:absolute;inset:0;background:#33404f;border-radius:20px;transition:.15s}
+  .sw span::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#cdd7e2;border-radius:50%;transition:.15s}
+  .sw input:checked + span{background:var(--accent)}.sw input:checked + span::before{transform:translateX(18px);background:#fff}
+  .segw{display:flex;gap:6px}
+  .seg{flex:1;padding:7px 4px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:11.5px;font-weight:600;cursor:pointer;text-align:center}
+  .seg.sel{border-color:var(--accent);background:rgba(78,161,255,.14)}
+  .stages{display:flex;flex-direction:column;gap:4px}
+  .stbtn{padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:12px;cursor:pointer;text-align:left}
+  .stbtn.sel{border-color:var(--accent2);background:rgba(55,214,160,.13)}
+  #desc{position:fixed;left:14px;bottom:14px;width:min(92vw,450px);padding:11px 14px;z-index:6}
+  #desc h4{margin:0 0 5px;font-size:13px;color:var(--accent)}#desc p{margin:0;font-size:12.5px;line-height:1.45}
+  @media (max-width:760px){ #title{max-width:64vw} #desc{display:none} }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+
+<div id="title" class="card">
+  <div class="tag">MM806 · AR Optics · Contact Lens</div>
+  <h1>Contact-lens display optics</h1>
+  <div class="sub">The display sits on your eye — far too close to focus. A micro-lens (femtoprojector) on the lens collimates each pixel so your own eye can focus it onto the retina.</div>
+</div>
+
+<div id="panel" class="card">
+  <div id="phead"><b>Optics</b><span class="chev">▾</span></div>
+  <div id="pbody">
+    <div class="sec"><h3>Walk the stages</h3><div class="stages" id="stages"></div></div>
+    <div class="sec">
+      <h3>The trick</h3>
+      <div class="row"><label for="tOptic">Femtoprojector micro-lens</label><label class="sw"><input type="checkbox" id="tOptic" checked><span></span></label></div>
+      <div class="row"><label>Pixels shown</label><div class="segw" style="flex:1"><button class="seg" data-px="1">1</button><button class="seg" data-px="3">3</button></div></div>
+    </div>
+    <div class="sec">
+      <h3>Focus</h3>
+      <div class="row"><label for="acc">Eye accommodation</label><input type="range" id="acc" min="0" max="100" value="100"><span class="rv" id="accV">far</span></div>
+      <div class="row"><label for="ml">Micro-lens tuning</label><input type="range" id="ml" min="0" max="100" value="0"><span class="rv" id="mlV">matched</span></div>
+    </div>
+    <div class="sec">
+      <h3>Show</h3>
+      <div class="row"><label for="tVI">Apparent image distance</label><label class="sw"><input type="checkbox" id="tVI" checked><span></span></label></div>
+      <div class="row"><label for="tPlay">Animate</label><label class="sw"><input type="checkbox" id="tPlay" checked><span></span></label></div>
+    </div>
+  </div>
+</div>
+
+<div id="desc" class="card">
+  <h4 id="descTitle">Why it needs optics at all</h4>
+  <p id="descBody">A contact-lens display sits a millimetre or two from your cornea — far inside your near point, so your eye cannot focus it and it would be a useless blur. A tiny lens on the contact (a "femtoprojector") collimates the light from each pixel into a parallel beam. Your eye then focuses those beams onto the retina, exactly as it focuses a distant object — a sharp image at a comfortable apparent distance.</p>
+</div>
+
+<script id="appcode">
+"use strict";
+(function(){
+  const cv=document.getElementById('cv'); const ctx=cv.getContext('2d'); const $=id=>document.getElementById(id);
+
+  const PIX=[{o:-1,c:'#4ea1ff'},{o:0,c:'#37d6a0'},{o:1,c:'#ffcf5c'}];
+  const S={ optic:true, pixels:1, acc:1.0, ml:0.0, showVI:true, play:true, stage:0, phase:0 };
+
+  const STAGES=[
+    ['0 · Whole path','Light leaves the micro-display on the lens, a micro-lens collimates each pixel into a parallel beam, and your eye focuses those beams onto the retina — a sharp image centred on your fovea.'],
+    ['1 · The problem','The display is only a millimetre or two from the cornea — well inside your near point. Your eye simply cannot focus something that close, so the raw image is a hopeless blur. Turn the micro-lens off to see it.'],
+    ['2 · Micro-display','A minute, very high-resolution micro-display (µLED) sits on the contact lens, facing into the eye. Each lit pixel is a point source of light.'],
+    ['3 · Femtoprojector','A tiny lens on the contact — a femtoprojector — sits just in front of each pixel. It collimates the diverging light into a parallel beam, and a pixel\u2019s position becomes a beam ANGLE.'],
+    ['4 · The eye\u2019s optics','Parallel light behaves like light from a distant object. The cornea and crystalline lens converge each collimated beam toward a single point — the eye does the final focusing.'],
+    ['5 · Retina','Each beam angle lands at its own spot on the retina, so the pixel-angles reassemble into a sharp image on the fovea.'],
+    ['6 · Focus / accommodation','Because the beams are collimated, the image sits at optical infinity: a relaxed eye sees it sharp. Accommodate to something near and it blurs — or mistune the micro-lens and collimation fails.']
+  ];
+
+  const stagesWrap=$('stages'); const stB=[];
+  STAGES.forEach((s,i)=>{ const b=document.createElement('button'); b.className='stbtn'; b.textContent=s[0];
+    b.addEventListener('click',()=>setStage(i)); stagesWrap.appendChild(b); stB.push(b); });
+  function setStage(i){ S.stage=i; stB.forEach((b,k)=>b.classList.toggle('sel',k===i)); $('descTitle').textContent=STAGES[i][0]; $('descBody').textContent=STAGES[i][1]; }
+
+  document.querySelectorAll('.seg[data-px]').forEach(b=>b.addEventListener('click',()=>{ S.pixels=parseInt(b.dataset.px);
+    document.querySelectorAll('.seg[data-px]').forEach(x=>x.classList.toggle('sel',x===b)); }));
+  function bindR(id,vid,fmt,fn){const e=$(id),v=$(vid);const u=()=>{fn(parseFloat(e.value));v.textContent=fmt(parseFloat(e.value));};e.addEventListener('input',u);u();}
+  bindR('acc','accV',x=>x>75?'far':x>35?'mid':'near',x=>S.acc=x/100);
+  bindR('ml','mlV',x=>x<12?'matched':x<50?'off a bit':'wrong',x=>S.ml=x/100);
+  function bindT(id,fn){const e=$(id);const u=()=>fn(e.checked);e.addEventListener('change',u);u();}
+  bindT('tOptic',v=>S.optic=v); bindT('tVI',v=>S.showVI=v); bindT('tPlay',v=>S.play=v);
+  $('phead').addEventListener('click',()=>$('panel').classList.toggle('collapsed'));
+  document.querySelector('.seg[data-px="1"]').classList.add('sel'); setStage(0);
+
+  // ---- resize ----
+  let W=0,H=0,DPR=1;
+  function resize(){ DPR=Math.min(window.devicePixelRatio||1,2); W=window.innerWidth;H=window.innerHeight;
+    cv.width=W*DPR;cv.height=H*DPR;cv.style.width=W+'px';cv.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0); }
+  window.addEventListener('resize',resize); resize();
+
+  // ---- helpers ----
+  function line(a,b,c,w,dash){ctx.save();ctx.strokeStyle=c;ctx.lineWidth=w||2;if(dash)ctx.setLineDash(dash);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();ctx.restore();}
+  function dot(p,c,r){ctx.save();ctx.fillStyle=c;ctx.beginPath();ctx.arc(p[0],p[1],r||3,0,7);ctx.fill();ctx.restore();}
+  function soft(p,c,r){ctx.save();const g=ctx.createRadialGradient(p[0],p[1],0,p[0],p[1],r);g.addColorStop(0,c);g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(p[0],p[1],r,0,7);ctx.fill();ctx.restore();}
+  function txt(t,x,y,c,s,al){ctx.save();ctx.fillStyle=c||'#9fb0c3';ctx.font=(s||12)+'px -apple-system,Segoe UI,Roboto,sans-serif';ctx.textAlign=al||'left';ctx.fillText(t,x,y);ctx.restore();}
+  const A=on=>on?1:0.22;
+  function lerp(a,b,t){return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
+  function poly(p,t){ let L=0,segs=[]; for(let i=1;i<p.length;i++){const d=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]);segs.push(d);L+=d;} let dd=L*t;
+    for(let i=1;i<p.length;i++){ if(dd<=segs[i-1]||i===p.length-1){const f=segs[i-1]?dd/segs[i-1]:0;return lerp(p[i-1],p[i],Math.min(1,f));} dd-=segs[i-1]; } return p[p.length-1]; }
+
+  function geom(){
+    const cy=H*0.5; const Ec=[W*0.60,cy]; const Re=Math.min(H*0.33,W*0.17);
+    const corneaX=Ec[0]-Re;                 // front of eye (pupil plane)
+    const lensX=Ec[0]-Re*0.42;              // crystalline lens
+    const retinaX=Ec[0]+Re*0.9;             // retina (back)
+    const clX=corneaX-W*0.008;              // contact lens front
+    const ledX=corneaX-W*0.075;             // micro-display
+    const mlX=corneaX-W*0.038;              // femtoprojector micro-lens
+    const apH=Re*0.26;                      // pupil half-height
+    const lensH=Re*0.34;
+    return {cy,Ec,Re,corneaX,lensX,retinaX,clX,ledX,mlX,apH,lensH};
+  }
+
+  function drawEye(g){
+    // sclera
+    ctx.save(); ctx.fillStyle='rgba(230,236,244,0.06)'; ctx.strokeStyle='rgba(180,200,220,0.5)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(g.Ec[0],g.Ec[1],g.Re,0,7); ctx.fill(); ctx.stroke(); ctx.restore();
+    // retina (back arc) highlighted
+    ctx.save(); ctx.strokeStyle='#e0a3a3'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(g.Ec[0],g.Ec[1],g.Re-2,-0.95,0.95); ctx.stroke(); ctx.restore();
+    txt('retina', g.retinaX+8, g.cy, '#e0a3a3', 12);
+    dot([g.retinaX-2,g.cy],'#c98b8b',3); txt('fovea', g.retinaX-2, g.cy+18, '#b98', 10, 'center');
+    // crystalline lens
+    ctx.save(); ctx.strokeStyle='#8fb6ff'; ctx.fillStyle='rgba(120,160,220,0.10)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.ellipse(g.lensX,g.cy,g.Re*0.10,g.lensH,0,0,7); ctx.fill(); ctx.stroke(); ctx.restore();
+    txt('eye lens', g.lensX, g.cy-g.lensH-8, '#8fb6ff', 11, 'center');
+    // iris (pupil aperture)
+    ctx.save(); ctx.strokeStyle='#5a6b80'; ctx.lineWidth=6;
+    ctx.beginPath(); ctx.moveTo(g.corneaX,g.cy-g.Re*0.9); ctx.lineTo(g.corneaX,g.cy-g.apH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(g.corneaX,g.cy+g.apH); ctx.lineTo(g.corneaX,g.cy+g.Re*0.9); ctx.stroke(); ctx.restore();
+    txt('pupil', g.corneaX, g.cy+g.Re*0.9+16, '#8fa0b4', 10, 'center');
+    // contact lens (arc in front)
+    ctx.save(); ctx.strokeStyle='rgba(160,210,235,0.85)'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.arc(g.Ec[0], g.cy, g.Re+ (g.corneaX-g.clX), -0.55, 0.55); ctx.stroke(); ctx.restore();
+    txt('contact lens', g.clX-4, g.cy-g.Re*0.6, 'rgba(160,210,235,0.9)', 11, 'right');
+  }
+
+  function draw(now){
+    ctx.clearRect(0,0,W,H); const g=geom(); const st=S.stage; const show=k=>st===0||st===k;
+    drawEye(g);
+
+    // defocus / blur amount
+    // optic ON: sharp when accommodation is 'far' (acc=1) and micro-lens matched (ml=0)
+    const defocus = S.optic ? Math.min(1, Math.abs(1-S.acc)*0.9 + S.ml*0.9) : 1.0;
+    const sharp = defocus < 0.12;
+
+    const usePix = S.pixels===1 ? [PIX[1]] : PIX;
+    const ledSpread=10, retSpread=g.Re*0.34;
+
+    usePix.forEach(px=>{
+      const pled=[g.ledX, g.cy - px.o*ledSpread];
+      const mlp=[g.mlX, g.cy - px.o*ledSpread*0.5];
+      const prIdeal=[g.retinaX-4, g.cy + px.o*retSpread];    // inverted image on retina
+      const spread = (S.optic ? defocus : 1.0) * (S.optic ? g.apH*1.1 : g.apH*1.7);
+
+      // ---- stage 2: the µLED pixel ----
+      if(show(2)||st===0){ dot(pled, px.c, 3.4); }
+
+      // ---- diverging from pixel to micro-lens (stage 3) ----
+      if(S.optic){
+        if(show(3)||st===0){ ctx.globalAlpha=A(show(3)); [-1,0,1].forEach(k=> line(pled,[g.mlX,g.cy+k*7 - px.o*ledSpread*0.5],px.c,1.2)); ctx.globalAlpha=1; }
+        // collimated parallel beam micro-lens -> pupil (stage 3/4)
+        const ang = px.o*0.16;   // pixel -> beam angle
+        if(show(3)||show(4)||st===0){ ctx.globalAlpha=A(show(3)||show(4));
+          [-1,0,1].forEach(k=>{ const y0=g.cy+k*8 - px.o*ledSpread*0.5; const p0=[g.mlX,y0];
+            const p1=[g.corneaX, y0 + ang*(g.corneaX-g.mlX)]; line(p0,p1,px.c,1.4); }); ctx.globalAlpha=1; }
+        // pupil -> eye lens -> converge to focus, then to retina (stage 4/5)
+        if(show(4)||show(5)||st===0){ ctx.globalAlpha=A(show(4)||show(5));
+          [-1,0,1].forEach(k=>{ const yL=g.cy+k*g.lensH*0.8 + px.o*4;
+            const hit=[g.retinaX-4, prIdeal[1] + k*spread];
+            line([g.corneaX, g.cy+k*g.apH*0.8 + ang*(g.corneaX-g.mlX)],[g.lensX,yL],px.c,1.2);
+            line([g.lensX,yL], hit, px.c,1.4); }); ctx.globalAlpha=1; }
+      } else {
+        // NO micro-lens: diverging rays straight from the too-close pixel -> big blur on retina
+        if(show(1)||show(4)||show(5)||st===0){ ctx.globalAlpha=A(show(1));
+          [-1,0,1].forEach(k=>{ const yL=g.cy+k*g.lensH*0.8;
+            const hit=[g.retinaX-4, prIdeal[1] + k*spread];
+            line(pled,[g.corneaX,g.cy+k*g.apH*0.8],px.c,1.2);
+            line([g.corneaX,g.cy+k*g.apH*0.8],[g.lensX,yL],px.c,1.2);
+            line([g.lensX,yL],hit,px.c,1.3); }); ctx.globalAlpha=1; }
+      }
+
+      // ---- retina spot: sharp point or blur disc ----
+      if(show(5)||show(6)||show(1)||st===0){
+        const r=Math.max(3, spread*0.9);
+        soft(prIdeal, px.c.replace('rgb','rgba'), r);
+        dot(prIdeal, px.c, Math.min(4, 3));
+      }
+    });
+
+    // femtoprojector micro-lens element
+    if(S.optic){ ctx.save(); ctx.globalAlpha=A(show(3)||st===0); ctx.strokeStyle='#bcd2ff'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.ellipse(g.mlX,g.cy,4,18,0,0,7); ctx.stroke(); ctx.restore();
+      txt('femtoprojector', g.mlX, g.cy+30, '#bcd2ff', 10, 'center'); }
+    // µLED label
+    ctx.save(); ctx.globalAlpha=A(show(2)||st===0); ctx.fillStyle='#e8edf4'; ctx.fillRect(g.ledX-3,g.cy-14,6,28); ctx.restore();
+    txt('µLED display', g.ledX, g.cy-22, '#cfe0ea', 10, 'center');
+
+    // apparent (virtual) image far away
+    if(S.showVI && S.optic){ ctx.save(); ctx.globalAlpha=A(show(6)||st===0)*0.8;
+      const vix=W*0.10; ctx.strokeStyle='rgba(205,215,226,0.4)'; ctx.setLineDash([3,4]); ctx.strokeRect(vix-24,H*0.5-30,48,40);
+      ctx.restore(); txt('apparent image', vix, H*0.5-38, '#cdd7e2', 11, 'center');
+      txt('(at a comfortable distance)', vix, H*0.5+26, '#9fb0c3', 10, 'center'); }
+
+    // animated photons along centre path
+    if(S.play){
+      const px=PIX[1]; const path = S.optic
+        ? [[g.ledX,g.cy],[g.mlX,g.cy],[g.corneaX,g.cy],[g.lensX,g.cy],[g.retinaX-4,g.cy]]
+        : [[g.ledX,g.cy],[g.corneaX,g.cy],[g.lensX,g.cy],[g.retinaX-4,g.cy]];
+      for(let h=0;h<3;h++){ const t=(S.phase+h/3)%1; dot(poly(path,t), sharp?'#8fe6c8':'#ffd27f', 3); }
+    }
+
+    // verdict
+    txt(S.optic ? (sharp?'sharp image on the retina ✓':'blurred — image not at your focus distance') : 'no micro-lens → the eye cannot focus the on-eye display ✗',
+        W*0.10, H*0.9, S.optic?(sharp?'#8fe6c8':'#ffcf5c'):'#ff6b6b', 13);
+    txt('a pixel\u2019s position becomes a beam angle → a point on the retina', W*0.10, H*0.9+18, '#9fb0c3', 11.5);
+  }
+
+  let last=performance.now();
+  function frame(now){ const dt=Math.min(0.05,(now-last)/1000); last=now; if(S.play)S.phase=(S.phase+dt*0.25)%1; draw(now); requestAnimationFrame(frame); }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Retinal-Scanning AR (Laser Retinal Writing) — MM806</title>
+<style>
+  :root{
+    --bg:#0b0f16; --panel:rgba(18,24,33,0.94); --panel2:rgba(30,38,50,0.9);
+    --line:#2a3442; --ink:#e8edf4; --dim:#9fb0c3; --accent:#4ea1ff; --accent2:#37d6a0;
+    --warn:#ff6b6b; --gold:#ffcf5c; --shadow:0 8px 30px rgba(0,0,0,0.45);
+    --r:#ff5a5a; --g:#49e07a; --b:#4ea1ff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  #wrap{position:fixed;inset:0}canvas{display:block}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  #title{position:fixed;top:14px;left:14px;padding:12px 15px;max-width:min(54vw,430px);z-index:6}
+  #title .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  #title h1{margin:3px 0 3px;font-size:19px}
+  #title .sub{font-size:12.5px;color:var(--dim);line-height:1.4}
+  #panel{position:fixed;right:14px;top:14px;width:min(92vw,290px);max-height:92vh;display:flex;flex-direction:column;z-index:6}
+  #phead{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;cursor:pointer;user-select:none}
+  #phead b{font-size:13px}#phead .chev{color:var(--dim);transition:transform .2s}
+  #panel.collapsed .chev{transform:rotate(-90deg)}
+  #pbody{overflow:auto;padding:0 12px 12px}#panel.collapsed #pbody{display:none}
+  .sec{border-top:1px solid var(--line);padding:9px 0 5px}.sec:first-child{border-top:none}
+  .sec h3{margin:0 0 7px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--accent2)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
+  .row label{font-size:12.5px}.row .rv{font-size:11.5px;color:var(--dim);min-width:54px;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:120px;height:4px;border-radius:3px;background:#2a3646;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0b0f16}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0b0f16}
+  .sw{position:relative;display:inline-block;width:40px;height:22px;flex:0 0 auto;cursor:pointer}
+  .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}
+  .sw span{position:absolute;inset:0;background:#33404f;border-radius:20px;transition:.15s}
+  .sw span::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#cdd7e2;border-radius:50%;transition:.15s}
+  .sw input:checked + span{background:var(--accent)}.sw input:checked + span::before{transform:translateX(18px);background:#fff}
+  .dots{display:flex;gap:6px}
+  .lz{flex:1;padding:7px 4px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:12px;font-weight:700;cursor:pointer;text-align:center}
+  .lz.r.on{border-color:var(--r);color:var(--r)}.lz.g.on{border-color:var(--g);color:var(--g)}.lz.b.on{border-color:var(--b);color:var(--b)}
+  .lz.off{opacity:.4}
+  .stages{display:flex;flex-direction:column;gap:4px}
+  .stbtn{padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:12px;cursor:pointer;text-align:left}
+  .stbtn.sel{border-color:var(--accent2);background:rgba(55,214,160,.13)}
+  #desc{position:fixed;left:14px;bottom:14px;width:min(92vw,440px);padding:11px 14px;z-index:6}
+  #desc h4{margin:0 0 5px;font-size:13px;color:var(--accent)}#desc p{margin:0;font-size:12.5px;line-height:1.45}
+  #desc .ref{margin-top:7px;font-size:11.5px;color:var(--dim);border-top:1px solid var(--line);padding-top:7px}
+  @media (max-width:760px){ #title{max-width:64vw} #desc{display:none} }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+
+<div id="title" class="card">
+  <div class="tag">MM806 · AR Optics · Retinal Scanning</div>
+  <h1>Laser retinal-writing AR</h1>
+  <div class="sub">A low-power RGB laser + a scanning mirror draw the picture <b>directly on your retina</b> through a pinpoint at the pupil. No screen — and it stays in focus whatever your eye does.</div>
+</div>
+
+<div id="panel" class="card">
+  <div id="phead"><b>System</b><span class="chev">▾</span></div>
+  <div id="pbody">
+    <div class="sec"><h3>Walk the stages</h3><div class="stages" id="stages"></div></div>
+    <div class="sec">
+      <h3>RGB laser</h3>
+      <div class="dots"><button class="lz r on" id="lzR">R</button><button class="lz g on" id="lzG">G</button><button class="lz b on" id="lzB">B</button></div>
+    </div>
+    <div class="sec">
+      <h3>Scanning</h3>
+      <div class="row"><label for="spd">Scan speed</label><input type="range" id="spd" min="20" max="260" step="5" value="120"><span class="rv" id="spdV">1.0×</span></div>
+      <div class="row"><label for="tPath">Show raster path</label><label class="sw"><input type="checkbox" id="tPath" checked><span></span></label></div>
+      <div class="row"><label for="tFan">Show beam fan → pupil</label><label class="sw"><input type="checkbox" id="tFan" checked><span></span></label></div>
+    </div>
+    <div class="sec">
+      <h3>Focus-free (Maxwellian)</h3>
+      <div class="row"><label for="tMax">Maxwellian pinpoint</label><label class="sw"><input type="checkbox" id="tMax" checked><span></span></label></div>
+      <div class="row"><label for="foc">Eye focus error</label><input type="range" id="foc" min="0" max="100" step="1" value="55"><span class="rv" id="focV">55%</span></div>
+    </div>
+    <div class="sec"><h3>Animation</h3>
+      <div class="row"><label for="tPlay">Play</label><label class="sw"><input type="checkbox" id="tPlay" checked><span></span></label></div>
+    </div>
+  </div>
+</div>
+
+<div id="desc" class="card">
+  <h4 id="descTitle">The whole system</h4>
+  <p id="descBody">Three low-power lasers (red, green, blue) are merged into one beam. A tiny MEMS mirror sweeps it in a raster — fast side-to-side, slow top-to-bottom — and a holographic element on the lens steers every beam through one pinpoint at your pupil. From there the beam lands on the retina and, line by line, paints the image directly onto it.</p>
+  <p class="ref" id="descRef">Representative Japanese system: QD Laser <b>RETISSA</b> retinal-scanning eyewear (uses eye-safe low-power lasers).</p>
+</div>
+
+<script id="appcode">
+"use strict";
+(function(){
+  const cv=document.getElementById('cv'); const ctx=cv.getContext('2d'); const $=id=>document.getElementById(id);
+
+  const S={ lz:{r:true,g:true,b:true}, speed:1.2, showPath:true, showFan:true,
+    maxwell:true, focus:0.55, play:true, stage:0, scan:0 };
+
+  const STAGES=[
+    ['0 · Whole system','Three low-power lasers (R,G,B) merge into one beam. A MEMS mirror sweeps it in a raster; a holographic element on the lens steers every beam through one pinpoint at the pupil; the beam then paints the image directly onto the retina, line by line.'],
+    ['1 · RGB laser source','Instead of a lit screen, the light comes from three tiny, low-power laser diodes — red, green and blue. Their brightness is modulated pixel-by-pixel as the beam scans. Eye-safe (Class-1) power levels are used.'],
+    ['2 · Beam combining','The three colours are merged with dichroic mirrors into a single, pencil-thin white beam. Mixing R, G and B sets each pixel\u2019s colour.'],
+    ['3 · MEMS scanning mirror','A micro-mirror on tiny hinges tilts on two axes: a fast horizontal sweep draws a line, a slow vertical sweep steps down the lines. One moving dot writes the whole frame ~60 times a second.'],
+    ['4 · Holographic combiner','A holographic optical element (HOE) on the eyeglass lens is transparent to the world but redirects the laser toward the eye — and converges the scanned fan of beams toward a single point.'],
+    ['5 · Maxwellian view','Every beam is aimed through one pinpoint at the centre of the pupil, then spreads onto the retina. This "Maxwellian view" is the key trick that makes the image focus-free.'],
+    ['6 · Writing on the retina','Because the beam is a point of light swept across the retina, it draws the image straight onto the photoreceptors. Persistence of vision fuses the moving dot into a steady picture.'],
+    ['7 · Focus-free advantage','Since all light passes through a pinhole at the pupil, the eye\u2019s own lens barely affects it: the picture stays sharp whatever your accommodation — so it works even with many refractive errors and is used as a low-vision aid.']
+  ];
+
+  // ---------- target image to "write" ----------
+  const TW=100,TH=68;
+  const off=document.createElement('canvas'); off.width=TW; off.height=TH; const octx=off.getContext('2d');
+  (function drawTarget(){
+    octx.fillStyle='#0a1830'; octx.fillRect(0,0,TW,TH);                 // sky
+    octx.fillStyle='#0e3a5a'; octx.fillRect(0,TH*0.62,TW,TH);           // ground band
+    octx.fillStyle='#ff5a5a'; octx.beginPath(); octx.arc(TW*0.78,TH*0.28,10,0,7); octx.fill(); // red sun
+    octx.fillStyle='#49e07a';                                          // green hills
+    octx.beginPath(); octx.moveTo(0,TH*0.66); octx.lineTo(TW*0.3,TH*0.5); octx.lineTo(TW*0.55,TH*0.66); octx.fill();
+    octx.beginPath(); octx.moveTo(TW*0.45,TH*0.66); octx.lineTo(TW*0.72,TH*0.46); octx.lineTo(TW,TH*0.66); octx.fill();
+    octx.fillStyle='#eaf2ff'; octx.font='bold 26px Georgia'; octx.textAlign='center'; octx.textBaseline='middle';
+    octx.fillText('AR', TW*0.28, TH*0.34);
+  })();
+  const IMG=octx.getImageData(0,0,TW,TH).data;
+  function sampleRow(row,col){ const x=Math.max(0,Math.min(TW-1,col)), y=Math.max(0,Math.min(TH-1,row));
+    const i=(y*TW+x)*4; let r=IMG[i],g=IMG[i+1],b=IMG[i+2];
+    if(!S.lz.r) r=0; if(!S.lz.g) g=0; if(!S.lz.b) b=0; return 'rgb('+r+','+g+','+b+')'; }
+
+  // ---------- UI ----------
+  const stagesWrap=$('stages'); const stB=[];
+  STAGES.forEach((s,i)=>{ const b=document.createElement('button'); b.className='stbtn'; b.textContent=s[0];
+    b.addEventListener('click',()=>setStage(i)); stagesWrap.appendChild(b); stB.push(b); });
+  function setStage(i){ S.stage=i; stB.forEach((b,k)=>b.classList.toggle('sel',k===i));
+    $('descTitle').textContent=STAGES[i][0]; $('descBody').textContent=STAGES[i][1]; }
+  function lzBtn(id,key){ const b=$(id); b.addEventListener('click',()=>{ S.lz[key]=!S.lz[key]; b.classList.toggle('on',S.lz[key]); b.classList.toggle('off',!S.lz[key]); }); }
+  lzBtn('lzR','r'); lzBtn('lzG','g'); lzBtn('lzB','b');
+  function bindR(id,vid,fmt,fn){const e=$(id),v=$(vid);const u=()=>{fn(parseFloat(e.value));v.textContent=fmt(parseFloat(e.value));};e.addEventListener('input',u);u();}
+  bindR('spd','spdV',x=>(x/100).toFixed(1)+'×',x=>S.speed=x/100);
+  bindR('foc','focV',x=>x+'%',x=>S.focus=x/100);
+  function bindT(id,fn){const e=$(id);const u=()=>fn(e.checked);e.addEventListener('change',u);u();}
+  bindT('tPath',v=>S.showPath=v); bindT('tFan',v=>S.showFan=v); bindT('tMax',v=>S.maxwell=v); bindT('tPlay',v=>S.play=v);
+  $('phead').addEventListener('click',()=>$('panel').classList.toggle('collapsed'));
+  setStage(0);
+
+  // ---------- resize ----------
+  let W=0,H=0,DPR=1;
+  function resize(){ DPR=Math.min(window.devicePixelRatio||1,2); W=window.innerWidth; H=window.innerHeight;
+    cv.width=W*DPR; cv.height=H*DPR; cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.setTransform(DPR,0,0,DPR,0,0); }
+  window.addEventListener('resize',resize); resize();
+
+  // ---------- draw helpers ----------
+  function line(a,b,c,w,dash){ctx.save();ctx.strokeStyle=c;ctx.lineWidth=w||2;if(dash)ctx.setLineDash(dash);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();ctx.restore();}
+  function dot(p,c,r){ctx.save();ctx.fillStyle=c;ctx.beginPath();ctx.arc(p[0],p[1],r||3,0,7);ctx.fill();ctx.restore();}
+  function txt(t,x,y,c,s,al){ctx.save();ctx.fillStyle=c||'#9fb0c3';ctx.font=(s||12)+'px -apple-system,Segoe UI,Roboto,sans-serif';ctx.textAlign=al||'left';ctx.fillText(t,x,y);ctx.restore();}
+  const A=on=>on?1:0.22;
+
+  function geom(){
+    const cy=H*0.5;
+    const laser=[W*0.06, cy+H*0.16];
+    const mirror=[W*0.24, cy+H*0.16];       // MEMS mirror
+    const comb=[W*0.60, cy];                // combiner centre on the lens
+    const combTop=[W*0.60, cy-H*0.16], combBot=[W*0.60, cy+H*0.16];
+    const eye=[W*0.80, cy];                  // eye centre
+    const Rr=Math.min(H*0.16, W*0.09);       // eye radius
+    const pupil=[eye[0]-Rr, eye[1]];         // pinpoint at pupil (front of eye)
+    return {cy,laser,mirror,comb,combTop,combBot,eye,Rr,pupil};
+  }
+
+  function draw(now){
+    ctx.clearRect(0,0,W,H);
+    const g=geom();
+    const st=S.stage; const show=k=>st===0||st===k;
+    const row=Math.floor(S.scan*TH);               // current scan line (slow vertical)
+    const colFast=Math.floor(((now*0.02*S.speed)%1)*TW);  // fast horizontal position
+    const beamCol=sampleRow(row,colFast);
+
+    // ---- laser module ----
+    ctx.globalAlpha=A(show(1)||show(2));
+    ['#ff5a5a','#49e07a','#4ea1ff'].forEach((c,i)=>{ const on=[S.lz.r,S.lz.g,S.lz.b][i];
+      const y=g.laser[1]-12+i*12; ctx.save(); ctx.fillStyle=on?c:'#333a45'; ctx.fillRect(g.laser[0]-14,y-4,12,8); ctx.restore();
+      if(on) line([g.laser[0]-2,y],[g.laser[0]+34,g.laser[1]],c,1.4); });
+    txt('RGB lasers', g.laser[0]-8, g.laser[1]+34, '#9fb0c3', 11, 'center');
+    // dichroic combine box
+    ctx.save(); ctx.strokeStyle='#6a7788'; ctx.strokeRect(g.laser[0]+34,g.laser[1]-14,16,28); ctx.restore();
+    txt('combine', g.laser[0]+42, g.laser[1]+34, '#9fb0c3', 10, 'center');
+    ctx.globalAlpha=1;
+
+    // combined beam -> mirror
+    ctx.globalAlpha=A(show(2)||show(3));
+    line([g.laser[0]+50,g.laser[1]], g.mirror, beamCol, 2.2);
+    ctx.globalAlpha=1;
+
+    // ---- MEMS mirror (tilts with scan) ----
+    ctx.save(); ctx.globalAlpha=A(show(3));
+    const tilt=0.5+0.35*Math.sin(now*0.02*S.speed)+ (S.scan-0.5)*0.2;
+    ctx.translate(g.mirror[0],g.mirror[1]); ctx.rotate(-0.6 - (S.scan-0.5)*0.5);
+    ctx.strokeStyle='#cdd7e2'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(-16,0); ctx.lineTo(16,0); ctx.stroke();
+    ctx.restore();
+    txt('MEMS scanning mirror', g.mirror[0], g.mirror[1]+34, '#9fb0c3', 11, 'center');
+    ctx.globalAlpha=1;
+
+    // ---- combiner (HOE) on the lens ----
+    ctx.save(); ctx.globalAlpha=A(show(4)||show(5));
+    ctx.strokeStyle='rgba(150,200,225,0.7)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(g.combTop[0],g.combTop[1]); ctx.lineTo(g.combBot[0],g.combBot[1]); ctx.stroke();
+    // hatch to suggest HOE
+    ctx.strokeStyle='rgba(150,200,225,0.35)'; ctx.lineWidth=1;
+    for(let y=g.combTop[1];y<=g.combBot[1];y+=7){ ctx.beginPath(); ctx.moveTo(g.comb[0]-5,y); ctx.lineTo(g.comb[0]+5,y-3); ctx.stroke(); }
+    ctx.restore();
+    txt('holographic combiner (lens)', g.comb[0], g.combTop[1]-8, 'rgba(150,200,225,0.85)', 11, 'center');
+    ctx.globalAlpha=1;
+
+    // ---- beam fan converging to the pupil (Maxwellian) ----
+    function combPointForRow(r){ const f=r/(TH-1); return [g.comb[0], g.combTop[1]+f*(g.combBot[1]-g.combTop[1])]; }
+    function retinaPointForRow(r){ const f=r/(TH-1); const ang=(f-0.5)*1.1;
+      return [ g.eye[0]+Math.cos(ang)*g.Rr*0.92, g.eye[1]+Math.sin(ang)*g.Rr*0.92 ]; }
+
+    if(S.showFan && (show(5)||show(4)||st===0)){
+      ctx.globalAlpha=A(show(5))*0.5;
+      for(let r=0;r<TH;r+=Math.floor(TH/7)){ const cp=combPointForRow(r);
+        line(g.mirror,cp,'rgba(120,160,200,0.35)',1);
+        if(S.maxwell) line(cp,g.pupil,'rgba(120,160,200,0.4)',1);
+        else line(cp,[g.pupil[0],g.pupil[1]+(r/(TH-1)-0.5)*g.Rr*0.9],'rgba(120,160,200,0.25)',1);
+      }
+      ctx.globalAlpha=1;
+    }
+
+    // ---- active beam: mirror -> combiner -> pupil -> retina ----
+    const cp=combPointForRow(row); const rp=retinaPointForRow(row);
+    ctx.globalAlpha=A(show(4)||show(5)||show(6));
+    line(g.mirror,cp,beamCol,2);
+    if(S.maxwell){ line(cp,g.pupil,beamCol,2); line(g.pupil,rp,beamCol,2); dot(g.pupil,'#ffffff',3); }
+    else { const pp=[g.pupil[0],g.pupil[1]+(row/(TH-1)-0.5)*g.Rr*0.9]; line(cp,pp,beamCol,2); line(pp,rp,beamCol,2); }
+    ctx.globalAlpha=1;
+
+    // ---- eye ----
+    ctx.save();
+    ctx.strokeStyle='#cdd7e2'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(g.eye[0],g.eye[1],g.Rr,0,7); ctx.stroke();
+    // pupil: pinpoint (maxwellian) or open aperture (conventional)
+    ctx.strokeStyle='#8fb6ff'; ctx.lineWidth=2;
+    if(S.maxwell){ dot(g.pupil,'#fff',3.5); }
+    else { ctx.beginPath(); ctx.moveTo(g.pupil[0],g.pupil[1]-g.Rr*0.45); ctx.lineTo(g.pupil[0],g.pupil[1]+g.Rr*0.45); ctx.stroke(); }
+    // retina arc + written spot
+    ctx.strokeStyle='#6a7788'; ctx.beginPath(); ctx.arc(g.eye[0],g.eye[1],g.Rr*0.94,-1.1,1.1); ctx.stroke();
+    dot(rp, beamCol, 3.4);
+    ctx.restore();
+    txt(S.maxwell?'pupil pinpoint · retina':'open pupil · retina', g.eye[0], g.eye[1]+g.Rr+18, '#9fb0c3', 11, 'center');
+
+    // ---- what the retina "sees": image written line-by-line ----
+    const iw=Math.min(230,W*0.2), ih=iw*TH/TW, ix=W-iw-24, iy=H-ih-70;
+    ctx.save();
+    ctx.fillStyle='#05070c'; ctx.fillRect(ix-2,iy-2,iw+4,ih+4);
+    // Maxwellian => sharp regardless of focus; conventional => blurs with focus error
+    const blur = S.maxwell ? 0 : Math.round(S.focus*6);
+    if(ctx.filter!==undefined) ctx.filter = blur>0 ? ('blur('+blur+'px)') : 'none';
+    const revealRows=Math.max(1,row+1);
+    ctx.drawImage(off, 0,0, TW, revealRows, ix, iy, iw, ih*revealRows/TH);
+    if(ctx.filter!==undefined) ctx.filter='none';
+    // scan line
+    const ly=iy+ih*(row/TH);
+    ctx.strokeStyle=beamCol; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(ix,ly); ctx.lineTo(ix+iw,ly); ctx.stroke();
+    ctx.strokeStyle='rgba(120,160,200,0.5)'; ctx.strokeRect(ix,iy,iw,ih);
+    ctx.restore();
+    txt(S.maxwell?'on your retina — sharp (focus-free)':'conventional — blurs with focus error',
+        ix+iw/2, iy-8, S.maxwell?'#8fe6c8':'#ffcf5c', 12, 'center');
+
+    // ---- footer note ----
+    txt('one moving dot writes the frame · fast horizontal + slow vertical raster', W*0.06, H*0.93, '#9fb0c3', 12);
+  }
+
+  // ---------- loop ----------
+  let last=performance.now();
+  function frame(now){
+    const dt=Math.min(0.05,(now-last)/1000); last=now;
+    if(S.play){ S.scan=(S.scan + dt*0.16*S.speed)%1; }
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
