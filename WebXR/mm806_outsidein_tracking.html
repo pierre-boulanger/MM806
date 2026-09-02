@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Outside-in Tracking — IMU / GPS — MM806</title>
+<style>
+  :root{
+    --bg:#0a0e15; --panel:rgba(18,24,33,0.94); --panel2:rgba(30,38,50,0.9);
+    --line:#2a3442; --ink:#e8edf4; --dim:#9fb0c3; --accent:#4ea1ff; --true:#37d6a0; --imu:#ff6b6b; --gps:#5fc9ff; --fused:#ffb17a; --crit:#ff6b6b; --warn:#ffcf5c; --shadow:0 8px 30px rgba(0,0,0,0.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #cv{border-radius:12px;background:#0e1522;box-shadow:var(--shadow);max-width:96vw;max-height:76vh;touch-action:none}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  #title{position:fixed;top:14px;left:14px;padding:11px 14px;max-width:min(44vw,330px);z-index:6}
+  #title .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  #title h1{margin:3px 0 3px;font-size:17px}#title .sub{font-size:12px;color:var(--dim);line-height:1.4}
+  #metrics{position:fixed;left:14px;top:112px;width:min(90vw,244px);z-index:6;padding:10px 13px}
+  #fixst{font-size:14px;font-weight:800;padding:6px 10px;border-radius:8px;text-align:center;margin-bottom:8px}
+  #fixst.ok{background:rgba(95,201,255,.15);color:var(--gps)} #fixst.dgps{background:rgba(55,214,160,.15);color:var(--true)} #fixst.no{background:rgba(255,107,107,.16);color:var(--crit)}
+  .m{display:flex;justify-content:space-between;font-size:12px;margin:5px 0;color:var(--dim)}
+  .m b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .m b.crit{color:var(--crit)} .m b.warn{color:var(--warn)} .m b.ok{color:var(--true)}
+  #panel{position:fixed;right:14px;top:14px;width:min(92vw,266px);max-height:94vh;display:flex;flex-direction:column;z-index:6}
+  #phead{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;cursor:pointer;user-select:none}
+  #phead b{font-size:13px}#phead .chev{color:var(--dim);transition:transform .2s}
+  #panel.collapsed .chev{transform:rotate(-90deg)}
+  #pbody{overflow:auto;padding:0 12px 12px}#panel.collapsed #pbody{display:none}
+  .sec{border-top:1px solid var(--line);padding:8px 0 4px}.sec:first-child{border-top:none}
+  .sec h3{margin:0 0 6px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--true)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
+  .row label{font-size:12px}.row .rv{font-size:11px;color:var(--dim);min-width:58px;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:106px;height:4px;border-radius:3px;background:#2a3646;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0a0e15}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0a0e15}
+  .sw{position:relative;display:inline-block;width:40px;height:22px;flex:0 0 auto;cursor:pointer}
+  .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}
+  .sw span{position:absolute;inset:0;background:#33404f;border-radius:20px;transition:.15s}
+  .sw span::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#cdd7e2;border-radius:50%;transition:.15s}
+  .sw input:checked + span{background:var(--accent)}.sw input:checked + span::before{transform:translateX(18px);background:#fff}
+  .segw{display:flex;gap:6px}
+  .seg{flex:1;padding:6px 4px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:11.5px;font-weight:600;cursor:pointer;text-align:center}
+  .seg.sel{border-color:var(--accent);background:rgba(78,161,255,.14)}
+  .btn{width:100%;padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:12.5px;font-weight:600;cursor:pointer;margin-top:6px}
+  .btn:hover{border-color:var(--accent)}
+  #hint{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:6;font-size:11.5px;color:var(--dim);background:rgba(10,14,21,.6);padding:4px 11px;border-radius:20px;border:1px solid var(--line)}
+  @media (max-width:920px){ #metrics{display:none} }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv" width="900" height="640"></canvas></div>
+
+<div id="title" class="card">
+  <div class="tag">MM806 · Tracking · Outside-in</div>
+  <h1>Outside-in tracking (IMU / GPS)</h1>
+  <div class="sub">External references (GPS satellites) give absolute, bounded position; the IMU gives smooth high-rate motion that drifts. A Kalman filter fuses them.</div>
+</div>
+
+<div id="metrics" class="card">
+  <div id="fixst" class="ok">GPS FIX</div>
+  <div class="m"><span>Fused error</span><b id="ferr">—</b></div>
+  <div class="m"><span>IMU-only error</span><b id="ierr">—</b></div>
+  <div class="m"><span>Satellites</span><b id="sats">—</b></div>
+  <div class="m"><span>HDOP</span><b id="hdop">—</b></div>
+  <div class="m"><span>GPS accuracy</span><b id="gacc">—</b></div>
+  <div class="m"><span>Multipath bias</span><b id="mpath2">—</b></div>
+  <div class="m"><span>Est. uncertainty</span><b id="unc">—</b></div>
+  <div class="m"><span>Rates</span><b id="rates">—</b></div>
+</div>
+
+<div id="panel" class="card">
+  <div id="phead"><b>Setup</b><span class="chev">▾</span></div>
+  <div id="pbody">
+    <div class="sec"><h3>Move</h3>
+      <div class="segw" id="modeSeg"><button class="seg" data-mode="auto">Auto</button><button class="seg" data-mode="manual">Steer (click)</button></div>
+      <div class="row" style="margin-top:6px"><label for="play">Run</label><label class="sw"><input type="checkbox" id="play" checked><span></span></label></div>
+      <div class="row"><label for="spd">Speed</label><input type="range" id="spd" min="1" max="14" step="0.5" value="6"><span class="rv" id="spdV">6 m/s</span></div>
+    </div>
+    <div class="sec"><h3>GPS (external)</h3>
+      <div class="row"><label for="gon">GPS available</label><label class="sw"><input type="checkbox" id="gon" checked><span></span></label></div>
+      <div class="row"><label for="grate">Fix rate</label><input type="range" id="grate" min="1" max="10" step="1" value="8"><span class="rv" id="grateV">8 Hz</span></div>
+      <div class="row"><label for="gacc2">Base accuracy</label><input type="range" id="gacc2" min="5" max="80" step="1" value="25"><span class="rv" id="gacc2V">2.5 m</span></div>
+      <div class="row"><label for="build">Urban canyon</label><label class="sw"><input type="checkbox" id="build" checked><span></span></label></div>
+      <div class="row"><label for="mpath">Multipath</label><label class="sw"><input type="checkbox" id="mpath" checked><span></span></label></div>
+      <div class="row"><label for="rtk">RTK base station</label><label class="sw"><input type="checkbox" id="rtk"><span></span></label></div>
+    </div>
+    <div class="sec"><h3>IMU / fusion</h3>
+      <div class="row"><label for="imub">IMU bias / drift</label><input type="range" id="imub" min="1" max="30" value="10"><span class="rv" id="imubV">0.10</span></div>
+      <div class="row"><label for="fuse">Kalman fusion</label><label class="sw"><input type="checkbox" id="fuse" checked><span></span></label></div>
+    </div>
+    <div class="sec"><h3>Show</h3>
+      <div class="row"><label for="tImu">IMU-only path</label><label class="sw"><input type="checkbox" id="tImu" checked><span></span></label></div>
+      <div class="row"><label for="tGps">GPS fixes</label><label class="sw"><input type="checkbox" id="tGps" checked><span></span></label></div>
+      <div class="row"><label for="tUnc">Uncertainty</label><label class="sw"><input type="checkbox" id="tUnc" checked><span></span></label></div>
+      <button class="btn" id="reset">Reset</button>
+    </div>
+  </div>
+</div>
+
+<div id="hint">green = truth · red = IMU-only (drifts) · blue = GPS fixes · orange = fused</div>
+
+<script id="appcode">
+"use strict";
+(function(){
+  const $=id=>document.getElementById(id); const g=$('cv').getContext('2d'); const cv=$('cv');
+  const WORLD={w:52,h:36};
+  const S={ mode:'auto', play:true, speed:6, gon:true, grate:8, gacc:2.5, build:true, imub:0.10, fuse:true,
+    rtk:false, rtkRange:40, multipath:true, showImu:true, showGps:true, showUnc:true };
+  const BS={x:4,y:4};   // RTK base station (known position)
+  const angN=a=>{ while(a>Math.PI)a-=2*Math.PI; while(a<-Math.PI)a+=2*Math.PI; return a; };
+  const randn=()=>(Math.random()+Math.random()+Math.random()-1.5)*1.35;
+
+  // buildings (urban canyon): x,y,w,h footprint + height
+  const BLD=[ {x:10,y:6,w:9,h:7,z:24}, {x:26,y:5,w:8,h:9,z:32}, {x:38,y:8,w:8,h:6,z:18},
+    {x:8,y:22,w:10,h:7,z:20}, {x:24,y:24,w:9,h:8,z:40}, {x:39,y:23,w:8,h:8,z:26} ];
+  // GPS constellation (azimuth from north, elevation deg)
+  const SATS=[]; for(let i=0;i<11;i++){ SATS.push({az:Math.random()*360, el:12+Math.random()*70, id:i+1}); }
+
+  // ellipse path
+  const PC={cx:WORLD.w/2,cy:WORLD.h/2,ax:WORLD.w*0.36,ay:WORLD.h*0.34};
+  const PER=2*Math.PI*Math.sqrt((PC.ax*PC.ax+PC.ay*PC.ay)/2);
+  function pathPt(t){ const a=t*2*Math.PI; return {x:PC.cx+PC.ax*Math.cos(a), y:PC.cy+PC.ay*Math.sin(a), th:Math.atan2(PC.ay*Math.cos(a),-PC.ax*Math.sin(a))}; }
+
+  let truePose={x:0,y:0,th:0}, fused={x:0,y:0,th:0}, imu={x:0,y:0,th:0}, truePath=[], imuPath=[], fusedPath=[],
+      P=4, tParam=0, gpsAccum=0, lastFix=null, fixes=[], fixStatus='FIX', nVis=0, hdop=99, gacc=99, target=null, mpM=0, baseline=0, rtkMode='none';
+
+  function reset(){ const p=pathPt(0); truePose={x:p.x,y:p.y,th:p.th}; fused={x:p.x,y:p.y,th:p.th}; imu={x:p.x,y:p.y,th:p.th};
+    truePath=[]; imuPath=[]; fusedPath=[]; P=4; tParam=0; gpsAccum=0; lastFix=null; fixes=[]; }
+  reset();
+
+  // --- satellite visibility (elevation mask + building skyline) ---
+  function skylineEl(px,py,azDeg){ let maxEl=0;
+    BLD.forEach(b=>{ const cs=[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]];
+      const azs=cs.map(c=>((Math.atan2(c[0]-px,c[1]-py)*180/Math.PI)+360)%360);
+      let mn=Math.min(...azs), mx=Math.max(...azs), inside;
+      if(mx-mn>180){ inside=(azDeg>=mx)||(azDeg<=mn); } else inside=(azDeg>=mn&&azDeg<=mx);
+      if(inside){ const nx=Math.max(b.x,Math.min(px,b.x+b.w)), ny=Math.max(b.y,Math.min(py,b.y+b.h)); const d=Math.max(0.5,Math.hypot(px-nx,py-ny));
+        const el=Math.atan2(b.z,d)*180/Math.PI; if(el>maxEl)maxEl=el; } });
+    return maxEl; }
+  function visibleSats(){ const vis=[]; SATS.forEach(s=>{ if(s.el<8) return; const blocked = S.build && s.el < skylineEl(truePose.x,truePose.y,s.az); if(!blocked) vis.push(s); }); return vis; }
+  // multipath: reflections off nearby building walls bias the fix away from the wall
+  function multipathBias(px,py){ if(!S.multipath || !S.build) return {x:0,y:0,m:0}; let bx=0,by=0,m=0;
+    BLD.forEach(b=>{ const nx=Math.max(b.x,Math.min(px,b.x+b.w)), ny=Math.max(b.y,Math.min(py,b.y+b.h)); const d=Math.hypot(px-nx,py-ny);
+      if(d<7 && d>0.01){ const s=(7-d)/7 * (b.z/28); const dir=Math.atan2(py-ny,px-nx); bx+=Math.cos(dir)*s; by+=Math.sin(dir)*s; m+=s; } });
+    return {x:bx*3.0, y:by*3.0, m}; }
+  // --- HDOP via 4x4 geometry matrix inverse ---
+  function inv4(M){ const a=M.slice(), I=[1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+    for(let c=0;c<4;c++){ let p=c; for(let r=c+1;r<4;r++) if(Math.abs(a[r*4+c])>Math.abs(a[p*4+c]))p=r;
+      if(Math.abs(a[p*4+c])<1e-9) return null;
+      if(p!==c){ for(let k=0;k<4;k++){ let t=a[c*4+k];a[c*4+k]=a[p*4+k];a[p*4+k]=t; t=I[c*4+k];I[c*4+k]=I[p*4+k];I[p*4+k]=t; } }
+      const d=a[c*4+c]; for(let k=0;k<4;k++){ a[c*4+k]/=d; I[c*4+k]/=d; }
+      for(let r=0;r<4;r++){ if(r===c)continue; const f=a[r*4+c]; for(let k=0;k<4;k++){ a[r*4+k]-=f*a[c*4+k]; I[r*4+k]-=f*I[c*4+k]; } } }
+    return I; }
+  function computeHDOP(vis){ if(vis.length<4) return 99; const N=[0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0];
+    vis.forEach(s=>{ const az=s.az*Math.PI/180, el=s.el*Math.PI/180; const gx=Math.cos(el)*Math.sin(az), gy=Math.cos(el)*Math.cos(az), gz=Math.sin(el), gv=[gx,gy,gz,1];
+      for(let i=0;i<4;i++)for(let j=0;j<4;j++) N[i*4+j]+=gv[i]*gv[j]; });
+    const inv=inv4(N); if(!inv) return 99; const h=Math.sqrt(Math.max(0,inv[0]+inv[5])); return Math.min(50,h); }
+
+  function step(dt){
+    if(!S.play) return;
+    let nt;
+    if(S.mode==='auto'){ tParam+=S.speed*dt/PER; if(tParam>=1)tParam-=1; nt=pathPt(tParam); }
+    else { const tg=target||truePose; const dx=tg.x-truePose.x,dy=tg.y-truePose.y,d=Math.hypot(dx,dy),des=Math.atan2(dy,dx);
+      const nth=truePose.th+angN(des-truePose.th)*Math.min(1,dt*3.5), stp=Math.min(d,S.speed*dt); nt={x:truePose.x+Math.cos(nth)*stp,y:truePose.y+Math.sin(nth)*stp,th:nth}; }
+    const dTrans=Math.hypot(nt.x-truePose.x,nt.y-truePose.y), dRot=angN(nt.th-truePose.th); truePose=nt;
+    truePath.push({x:nt.x,y:nt.y}); if(truePath.length>3000)truePath.shift();
+    // IMU dead-reckoning (both the pure-IMU pose and the fused prediction)
+    function imuStep(p){ p.th=angN(p.th+dRot+randn()*S.imub*0.4); const dm=dTrans*(1+randn()*S.imub); p.x+=Math.cos(p.th)*dm; p.y+=Math.sin(p.th)*dm; }
+    imuStep(imu);
+    if(S.fuse){ imuStep(fused); P += (S.imub*dTrans)*(S.imub*dTrans)*1.4 + 0.008; }
+    imuPath.push({x:imu.x,y:imu.y}); if(imuPath.length>3000)imuPath.shift();
+    // GPS / RTK
+    const vis=S.gon? visibleSats():[]; nVis=vis.length; hdop=computeHDOP(vis);
+    baseline=Math.hypot(truePose.x-BS.x, truePose.y-BS.y);
+    rtkMode='none'; if(S.rtk && S.gon && nVis>=4 && baseline<S.rtkRange){ rtkMode=(nVis>=5 && hdop<3)?'fixed':'float'; }
+    let baseAcc=(nVis>=4)? S.gacc*hdop : 99; if(rtkMode==='fixed')baseAcc=0.03; else if(rtkMode==='float')baseAcc=0.4;
+    const mp=multipathBias(truePose.x,truePose.y); mpM=mp.m; gacc=baseAcc + mp.m*1.0;
+    gpsAccum+=dt; const doGps=gpsAccum>=1/S.grate; if(doGps) gpsAccum-=1/S.grate;
+    if(doGps && S.gon && nVis>=4){ const sig=baseAcc*0.7; const fx=truePose.x+randn()*sig+mp.x, fy=truePose.y+randn()*sig+mp.y; lastFix={x:fx,y:fy,acc:gacc};
+      fixes.push({x:fx,y:fy,acc:gacc,life:1}); if(fixes.length>40)fixes.shift();
+      fixStatus = rtkMode==='fixed'?'RTK FIXED': rtkMode==='float'?'RTK FLOAT': (hdop<2?'DGPS':'FIX');
+      if(S.fuse){ const R=Math.max(0.0009,gacc*gacc); const K=P/(P+R); fused.x+=K*(fx-fused.x); fused.y+=K*(fy-fused.y); P=(1-K)*P;
+        if(dTrans>0.02) fused.th=angN(fused.th+angN(truePose.th-fused.th)*0.3); } }
+    else if(doGps && S.gon){ fixStatus='NO FIX'; }
+    else if(!S.gon){ fixStatus='GPS OFF'; }
+    // if fusion OFF, the estimate is GPS-only (held between fixes; frozen during outage)
+    if(!S.fuse){ if(lastFix){ fused.x=lastFix.x; fused.y=lastFix.y; } fused.th=truePose.th; }
+    fused._px=fused.x; fused._py=fused.y;
+    P=Math.max(0.3, Math.min(400,P));
+    fusedPath.push({x:fused.x,y:fused.y}); if(fusedPath.length>3000)fusedPath.shift();
+    fixes.forEach(f=>f.life-=dt*0.25); fixes=fixes.filter(f=>f.life>0);
+    // slow constellation motion
+    SATS.forEach(s=>{ s.az=(s.az+dt*2.0)%360; });
+  }
+
+  // ---- controls ----
+  function bindR(id,vid,fmt,fn){const e=$(id),v=$(vid);const u=()=>{fn(parseFloat(e.value));v.textContent=fmt(parseFloat(e.value));};e.addEventListener('input',u);v.textContent=fmt(parseFloat(e.value));}
+  bindR('spd','spdV',x=>x+' m/s',v=>S.speed=v); bindR('grate','grateV',x=>x+' Hz',v=>S.grate=v);
+  bindR('gacc2','gacc2V',x=>(x/10).toFixed(1)+' m',v=>S.gacc=v/10); bindR('imub','imubV',x=>(x/100).toFixed(2),v=>S.imub=v/100);
+  function bindT(id,fn){const e=$(id);const u=()=>fn(e.checked);e.addEventListener('change',u);u();}
+  bindT('gon',v=>S.gon=v); bindT('build',v=>S.build=v); bindT('fuse',v=>S.fuse=v); bindT('rtk',v=>S.rtk=v); bindT('mpath',v=>S.multipath=v);
+  bindT('tImu',v=>S.showImu=v); bindT('tGps',v=>S.showGps=v); bindT('tUnc',v=>S.showUnc=v);
+  $('play').addEventListener('change',()=>S.play=$('play').checked);
+  document.querySelectorAll('.seg[data-mode]').forEach(b=>b.addEventListener('click',()=>{ S.mode=b.dataset.mode; document.querySelectorAll('.seg[data-mode]').forEach(z=>z.classList.toggle('sel',z===b)); }));
+  document.querySelector('.seg[data-mode="auto"]').classList.add('sel');
+  $('reset').addEventListener('click',reset); $('phead').addEventListener('click',()=>$('panel').classList.toggle('collapsed'));
+
+  // ---- view ----
+  let VX={};
+  function layout(){ const W=cv.width,H=cv.height,pad=14,sky=190; const mw=W-2*pad; const sc=Math.min(mw/WORLD.w,(H-2*pad)/WORLD.h);
+    VX={sc,ox:(W-WORLD.w*sc)/2,oy:pad}; VX.skyR=84; VX.skyX=W-VX.skyR-24; VX.skyY=H-VX.skyR-20; }
+  const wx=x=>VX.ox+x*VX.sc, wy=y=>VX.oy+y*VX.sc, toW=(cx,cy)=>({x:(cx-VX.ox)/VX.sc,y:(cy-VX.oy)/VX.sc});
+  function evtXY(e){ const r=cv.getBoundingClientRect(); return [ (e.clientX-r.left)*cv.width/r.width, (e.clientY-r.top)*cv.height/r.height ]; }
+  cv.addEventListener('pointerdown',e=>{ if(S.mode!=='manual')return; const [cx,cy]=evtXY(e); const p=toW(cx,cy); if(p.x>0&&p.x<WORLD.w&&p.y>0&&p.y<WORLD.h) target={x:p.x,y:p.y}; });
+  function tri(px,py,th,size,color,dash){ g.save(); g.translate(px,py); g.rotate(th); g.strokeStyle=color; g.fillStyle=color; if(dash){g.setLineDash([4,3]);g.lineWidth=2;} else g.lineWidth=2;
+    g.beginPath(); g.moveTo(size,0); g.lineTo(-size*0.6,size*0.6); g.lineTo(-size*0.6,-size*0.6); g.closePath(); if(dash){g.stroke();}else{g.globalAlpha=0.85;g.fill();g.globalAlpha=1;} g.setLineDash([]); g.restore(); }
+
+  function draw(){ layout(); const W=cv.width,H=cv.height; g.clearRect(0,0,W,H);
+    g.strokeStyle='#2b3a4d'; g.lineWidth=2; g.strokeRect(wx(0),wy(0),WORLD.w*VX.sc,WORLD.h*VX.sc);
+    g.strokeStyle='rgba(80,100,130,0.10)'; g.lineWidth=1; for(let i=5;i<WORLD.w;i+=5){ g.beginPath();g.moveTo(wx(i),wy(0));g.lineTo(wx(i),wy(WORLD.h));g.stroke(); } for(let i=5;i<WORLD.h;i+=5){ g.beginPath();g.moveTo(wx(0),wy(i));g.lineTo(wx(WORLD.w),wy(i));g.stroke(); }
+    // RTK base station + range
+    if(S.rtk){ g.strokeStyle='rgba(55,214,160,0.35)'; g.setLineDash([4,4]); g.lineWidth=1; g.beginPath(); g.arc(wx(BS.x),wy(BS.y),S.rtkRange*VX.sc,0,7); g.stroke(); g.setLineDash([]);
+      g.fillStyle='#37d6a0'; g.beginPath(); g.moveTo(wx(BS.x),wy(BS.y)-8); g.lineTo(wx(BS.x)-6,wy(BS.y)+4); g.lineTo(wx(BS.x)+6,wy(BS.y)+4); g.closePath(); g.fill();
+      g.fillStyle='#37d6a0'; g.font='9px sans-serif'; g.textAlign='center'; g.fillText('RTK base', wx(BS.x), wy(BS.y)+16); g.textAlign='left';
+      if(rtkMode!=='none'){ g.strokeStyle='rgba(55,214,160,0.4)'; g.setLineDash([2,4]); g.beginPath(); g.moveTo(wx(BS.x),wy(BS.y)); g.lineTo(wx(fused.x),wy(fused.y)); g.stroke(); g.setLineDash([]); } }
+    // buildings
+    if(S.build){ BLD.forEach(b=>{ g.fillStyle='rgba(120,132,148,0.5)'; g.strokeStyle='rgba(160,175,195,0.5)'; g.fillRect(wx(b.x),wy(b.y),b.w*VX.sc,b.h*VX.sc); g.strokeRect(wx(b.x),wy(b.y),b.w*VX.sc,b.h*VX.sc);
+      g.fillStyle='rgba(200,210,225,0.55)'; g.font='8px sans-serif'; g.textAlign='center'; g.fillText(b.z+'m', wx(b.x+b.w/2), wy(b.y+b.h/2)+3); g.textAlign='left'; }); }
+    // GPS fixes + error circles
+    if(S.showGps){ fixes.forEach(f=>{ g.strokeStyle='rgba(95,201,255,'+(0.25*f.life)+')'; g.lineWidth=1; g.beginPath(); g.arc(wx(f.x),wy(f.y),f.acc*VX.sc,0,7); g.stroke();
+      g.fillStyle='rgba(95,201,255,'+Math.min(1,f.life+0.2)+')'; g.beginPath(); g.arc(wx(f.x),wy(f.y),2.6,0,7); g.fill(); }); }
+    // paths
+    function poly(a,c,w,dash){ if(a.length<2)return; g.strokeStyle=c; g.lineWidth=w; if(dash)g.setLineDash(dash); g.beginPath(); g.moveTo(wx(a[0].x),wy(a[0].y)); for(let i=1;i<a.length;i++)g.lineTo(wx(a[i].x),wy(a[i].y)); g.stroke(); g.setLineDash([]); }
+    poly(truePath,'rgba(55,214,160,0.85)',2); if(S.showImu) poly(imuPath,'rgba(255,107,107,0.7)',2,[5,3]); poly(fusedPath,'rgba(255,177,122,0.95)',2);
+    // uncertainty
+    if(S.showUnc){ const rr=Math.sqrt(P)*VX.sc+3; g.strokeStyle='rgba(255,177,122,0.5)'; g.lineWidth=1.5; g.setLineDash([2,3]); g.beginPath(); g.arc(wx(fused.x),wy(fused.y),rr,0,7); g.stroke(); g.setLineDash([]); }
+    // agents
+    tri(wx(truePose.x),wy(truePose.y),truePose.th,10,'#37d6a0',false);
+    if(S.showImu){ g.strokeStyle='#ff6b6b'; g.lineWidth=1.5; g.beginPath(); g.arc(wx(imu.x),wy(imu.y),5,0,7); g.stroke(); }
+    tri(wx(fused.x),wy(fused.y),fused.th,10,'#ffb17a',true);
+    // outage banner
+    if(fixStatus==='NO FIX'||fixStatus==='GPS OFF'){ g.fillStyle='rgba(255,107,107,0.9)'; g.font='bold 12px sans-serif'; g.textAlign='center'; g.fillText(fixStatus==='GPS OFF'?'GPS disabled — coasting on IMU':'GPS outage (blocked) — coasting on IMU', wx(WORLD.w/2), wy(0)-4); g.textAlign='left'; }
+
+    // ===== satellite skyplot =====
+    const sx=VX.skyX, sy=VX.skyY, R=VX.skyR;
+    g.fillStyle='#0b1220'; g.strokeStyle='#2b3a4d'; g.beginPath(); g.arc(sx,sy,R,0,7); g.fill(); g.stroke();
+    g.strokeStyle='rgba(80,100,130,0.3)'; [30,60].forEach(el=>{ g.beginPath(); g.arc(sx,sy,R*(1-el/90),0,7); g.stroke(); });
+    g.strokeStyle='rgba(80,100,130,0.25)'; [0,90,180,270].forEach(a=>{ const ar=a*Math.PI/180; g.beginPath(); g.moveTo(sx,sy); g.lineTo(sx+Math.sin(ar)*R,sy-Math.cos(ar)*R); g.stroke(); });
+    g.fillStyle='#9fb0c3'; g.font='8px sans-serif'; g.textAlign='center'; g.fillText('N',sx,sy-R-4); g.fillText('sky view (satellites)',sx,sy+R+12);
+    const vis=S.gon? visibleSats():[]; const visSet=new Set(vis.map(v=>v.id));
+    SATS.forEach(s=>{ const r=R*(1-s.el/90), ar=s.az*Math.PI/180, px=sx+Math.sin(ar)*r, py=sy-Math.cos(ar)*r; const ok=visSet.has(s.id)&&S.gon;
+      g.fillStyle= ok?'#37d6a0':'#ff6b6b'; g.beginPath(); g.arc(px,py,3.5,0,7); g.fill(); g.fillStyle='#0a0e15'; g.font='7px sans-serif'; g.fillText(String(s.id),px,py+2.5); });
+    g.textAlign='left';
+
+    updateMetrics();
+  }
+
+  function updateMetrics(){ const fe=Math.hypot(fused.x-truePose.x,fused.y-truePose.y), ie=Math.hypot(imu.x-truePose.x,imu.y-truePose.y);
+    const st=$('fixst'); const rt=fixStatus.indexOf('RTK')>=0; st.className= rt?'dgps':(fixStatus==='DGPS'||fixStatus==='FIX'?'ok':'no'); st.textContent=fixStatus;
+    const f=$('ferr'); f.textContent=fe.toFixed(2)+' m'; f.className='b '+(fe>5?'crit':fe>1?'warn':'ok');
+    $('ierr').textContent=ie.toFixed(1)+' m';
+    const sv=$('sats'); sv.textContent=nVis+' / '+SATS.length; sv.className='b '+(nVis<4?'crit':nVis<6?'warn':'ok');
+    const hd=$('hdop'); hd.textContent= nVis>=4? hdop.toFixed(1):'—'; hd.className='b '+(hdop>5?'crit':hdop>2.5?'warn':'ok');
+    $('gacc').textContent= nVis>=4? gacc.toFixed(2)+' m':'—';
+    const mpe=$('mpath2'); if(!S.multipath){ mpe.textContent='off'; mpe.className='b'; } else { mpe.textContent=(mpM>0.02?(mpM).toFixed(2):'—'); mpe.className='b '+(mpM>0.5?'crit':mpM>0.1?'warn':'ok'); }
+    $('unc').textContent='±'+Math.sqrt(P).toFixed(1)+' m';
+    $('rates').textContent='IMU 1 kHz · GPS '+S.grate+' Hz';
+  }
+
+  let last=performance.now();
+  function frame(now){ const dt=Math.max(0,Math.min(0.05,(now-last)/1000)); last=now; step(dt); draw(); requestAnimationFrame(frame); }
+  layout(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
