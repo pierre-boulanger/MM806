@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Quantum IMU — Atom Interferometer — MM806</title>
+<style>
+  :root{
+    --bg:#0a0e15; --panel:rgba(18,24,33,0.94); --panel2:rgba(30,38,50,0.9);
+    --line:#2a3442; --ink:#e8edf4; --dim:#9fb0c3; --accent:#4ea1ff; --armA:#5fc9ff; --armB:#ffcf5c; --q:#37d6a0; --mems:#ff6b6b; --pulse:#c59bff; --shadow:0 8px 30px rgba(0,0,0,0.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #cv{border-radius:12px;background:#0d1420;box-shadow:var(--shadow);max-width:97vw;max-height:76vh;touch-action:none}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  #title{position:fixed;top:14px;left:14px;padding:11px 14px;max-width:min(46vw,360px);z-index:6}
+  #title .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  #title h1{margin:3px 0 3px;font-size:17px}#title .sub{font-size:12px;color:var(--dim);line-height:1.4}
+  #read{position:fixed;left:14px;top:118px;width:min(90vw,248px);z-index:6;padding:10px 13px}
+  #read h3{margin:0 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .m{display:flex;justify-content:space-between;font-size:12px;margin:5px 0;color:var(--dim)}
+  .m b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .m b.q{color:var(--q)}
+  #panel{position:fixed;right:14px;top:14px;width:min(92vw,266px);max-height:94vh;display:flex;flex-direction:column;z-index:6}
+  #phead{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;cursor:pointer;user-select:none}
+  #phead b{font-size:13px}#phead .chev{color:var(--dim);transition:transform .2s}
+  #panel.collapsed .chev{transform:rotate(-90deg)}
+  #pbody{overflow:auto;padding:0 12px 12px}#panel.collapsed #pbody{display:none}
+  .sec{border-top:1px solid var(--line);padding:8px 0 4px}.sec:first-child{border-top:none}
+  .sec h3{margin:0 0 6px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--q)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
+  .row label{font-size:12px}.row .rv{font-size:11px;color:var(--dim);min-width:64px;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:104px;height:4px;border-radius:3px;background:#2a3646;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0a0e15}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0a0e15}
+  .sw{position:relative;display:inline-block;width:40px;height:22px;flex:0 0 auto;cursor:pointer}
+  .sw input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}
+  .sw span{position:absolute;inset:0;background:#33404f;border-radius:20px;transition:.15s}
+  .sw span::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#cdd7e2;border-radius:50%;transition:.15s}
+  .sw input:checked + span{background:var(--accent)}.sw input:checked + span::before{transform:translateX(18px);background:#fff}
+  #hint{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:6;font-size:11.5px;color:var(--dim);background:rgba(10,14,21,.6);padding:4px 11px;border-radius:20px;border:1px solid var(--line)}
+  @media (max-width:920px){ #read{display:none} }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv" width="940" height="660"></canvas></div>
+
+<div id="title" class="card">
+  <div class="tag">MM806 · Quantum Sensing · Atom Interferometer</div>
+  <h1>Quantum IMU</h1>
+  <div class="sub">Laser pulses split, mirror and recombine atomic matter waves. Acceleration and rotation appear as an interference phase — absolute and drift-free.</div>
+</div>
+
+<div id="read" class="card">
+  <h3>Measurement</h3>
+  <div class="m"><span>Acceleration</span><b id="mA" class="q">—</b></div>
+  <div class="m"><span>Rotation</span><b id="mO" class="q">—</b></div>
+  <div class="m"><span>Δφ acceleration</span><b id="dpA">—</b></div>
+  <div class="m"><span>Δφ Sagnac</span><b id="dpO">—</b></div>
+  <div class="m"><span>Fringe contrast</span><b id="ctr">—</b></div>
+  <div class="m"><span>Sensitivity</span><b id="sens">—</b></div>
+  <div class="m"><span>Cycle rate</span><b id="cyc">—</b></div>
+  <div class="m"><span>Recoil velocity</span><b id="vrec">—</b></div>
+</div>
+
+<div id="panel" class="card">
+  <div id="phead"><b>Interferometer</b><span class="chev">▾</span></div>
+  <div id="pbody">
+    <div class="sec"><h3>Sequence</h3>
+      <div class="row"><label for="Tint">Interrogation 2T</label><input type="range" id="Tint" min="5" max="120" step="1" value="50"><span class="rv" id="TintV">50 ms</span></div>
+      <div class="row"><label for="temp">Atom temperature</label><input type="range" id="temp" min="1" max="100" value="20"><span class="rv" id="tempV">2.0 µK</span></div>
+      <div class="row"><label for="natom">Atom number</label><input type="range" id="natom" min="40" max="80" value="60"><span class="rv" id="natomV">1e6</span></div>
+      <div class="row"><label for="play">Run cycles</label><label class="sw"><input type="checkbox" id="play" checked><span></span></label></div>
+    </div>
+    <div class="sec"><h3>Inertial input</h3>
+      <div class="row"><label for="acc">Acceleration</label><input type="range" id="acc" min="0" max="200" step="1" value="98"><span class="rv" id="accV">9.81 m/s²</span></div>
+      <div class="row"><label for="rot">Rotation Ω</label><input type="range" id="rot" min="-300" max="300" step="1" value="0"><span class="rv" id="rotV">0 °/s</span></div>
+      <div class="row"><label for="scan">Scan phase φ</label><input type="range" id="scan" min="0" max="628" value="0"><span class="rv" id="scanV">0.00</span></div>
+      <div class="row"><label for="autoscan">Auto-scan fringe</label><label class="sw"><input type="checkbox" id="autoscan"><span></span></label></div>
+    </div>
+    <div class="sec"><h3>Show</h3>
+      <div class="row"><label for="tArea">Sagnac area</label><label class="sw"><input type="checkbox" id="tArea" checked><span></span></label></div>
+      <div class="row"><label for="tDrift">Drift vs MEMS</label><label class="sw"><input type="checkbox" id="tDrift" checked><span></span></label></div>
+    </div>
+  </div>
+</div>
+
+<div id="hint">π/2 splits · π mirrors · π/2 recombines — the phase is the inertial signal</div>
+
+<script id="appcode">
+"use strict";
+(function(){
+  const $=id=>document.getElementById(id); const cv=$('cv'), x=cv.getContext('2d');
+  // ---- physics (Rubidium-87) ----
+  const hbar=1.054571817e-34, mRb=1.44316e-25, lambda=780e-9;
+  const keff=2*(2*Math.PI/lambda);           // two-photon Raman effective wavevector (~1.61e7 /m)
+  const vrec=hbar*keff/mRb;                   // photon-recoil velocity (~11.8 mm/s)
+  const S={ Tms:50, tempuK:2.0, N:1e6, a:9.81, Om:0, scan:0, autoscan:false, area:true, drift:true, play:true };
+
+  function phys(){ const Ts=S.Tms/2000;       // T (single interval) in s; 2T = interrogation shown
+    const dphiA=keff*S.a*Ts*Ts;
+    const Aarea=vrec*0.5*Ts*Ts;               // Sagnac enclosed area (v_launch ~0.5 m/s)
+    const dphiO=2*mRb*(S.Om*Math.PI/180)*Aarea/hbar;
+    const C=0.95*Math.exp(-(S.tempuK/8)*Math.pow(S.Tms/60,2));
+    const dTot=dphiA+dphiO+S.scan;
+    const P=0.5*(1-Math.max(0,C)*Math.cos(dTot));
+    const da=1/(keff*Ts*Ts*Math.sqrt(S.N)*Math.max(0.05,C));   // accel sensitivity (m/s²)
+    const cyc=1/(2*Ts+0.05);
+    return {Ts,dphiA,dphiO,Aarea,C:Math.max(0,C),dTot,P,da,cyc}; }
+
+  // drift history (quantum flat vs MEMS random walk)
+  let qHist=[], mHist=[], memsBias=0, driftT=0;
+
+  // ---- controls ----
+  function bindR(id,vid,fmt,fn){const e=$(id),v=$(vid);const u=()=>{fn(parseFloat(e.value));v.textContent=fmt(parseFloat(e.value));};e.addEventListener('input',u);v.textContent=fmt(parseFloat(e.value));}
+  bindR('Tint','TintV',v=>v+' ms',v=>S.Tms=v);
+  bindR('temp','tempV',v=>(v/10).toFixed(1)+' µK',v=>S.tempuK=v/10);
+  bindR('natom','natomV',v=>'1e'+(v/10).toFixed(1),v=>S.N=Math.pow(10,v/10));
+  bindR('acc','accV',v=>(v/10).toFixed(2)+' m/s²',v=>S.a=v/10);
+  bindR('rot','rotV',v=>v+' °/s',v=>S.Om=v);
+  bindR('scan','scanV',v=>(v/100).toFixed(2),v=>S.scan=v/100);
+  function bindT(id,fn){const e=$(id);const u=()=>fn(e.checked);e.addEventListener('change',u);u();}
+  bindT('autoscan',v=>S.autoscan=v); bindT('tArea',v=>S.area=v); bindT('tDrift',v=>S.drift=v);
+  $('play').addEventListener('change',()=>S.play=$('play').checked);
+  $('phead').addEventListener('click',()=>$('panel').classList.toggle('collapsed'));
+
+  // ---- layout ----
+  let L={};
+  function layout(){ const W=cv.width,H=cv.height; const topH=H*0.56;
+    L.st={x:16,y:34,w:W*0.575,h:topH-40};
+    L.fr={x:W*0.60,y:34,w:W-16-(W*0.60),h:(topH-40)*0.5};
+    L.ap={x:W*0.60,y:34+(topH-40)*0.5+14,w:W-16-(W*0.60),h:(topH-40)*0.44};
+    L.dr={x:16,y:topH+6,w:W-32,h:H-topH-14}; }
+
+  // ---- drawing ----
+  let cyc=0;   // cycle animation phase 0..1
+  function drawSpaceTime(P){ const r=L.st; x.save();
+    x.fillStyle='#0f1622'; x.strokeStyle='#2b3a4d'; x.lineWidth=1; x.fillRect(r.x,r.y,r.w,r.h); x.strokeRect(r.x,r.y,r.w,r.h);
+    x.fillStyle='#9fb0c3'; x.font='11px sans-serif'; x.textAlign='left'; x.fillText('space-time diagram — matter-wave paths',r.x+8,r.y+16);
+    const px=r.x+40, pw=r.w-70, py=r.y+r.h-30, ph=r.h-70;
+    const t0=px, tT=px+pw*0.5, t2=px+pw;                 // time positions of π/2, π, π/2
+    const y0=py, yh=py-ph;                                // base and top separation
+    // pulses
+    [[t0,'π/2'],[tT,'π'],[t2,'π/2']].forEach(p=>{ const near=Math.abs(cyc-(p[0]-px)/pw)<0.04;
+      x.strokeStyle=near?'#c59bff':'rgba(197,155,255,0.4)'; x.lineWidth=near?2.5:1.4; x.beginPath(); x.moveTo(p[0],r.y+24); x.lineTo(p[0],py+6); x.stroke();
+      x.fillStyle='#c59bff'; x.font='11px sans-serif'; x.textAlign='center'; x.fillText(p[1],p[0],r.y+34); });
+    // enclosed Sagnac area (between the two arms)
+    if(S.area){ x.fillStyle='rgba(197,155,255,0.10)'; x.beginPath(); x.moveTo(t0,y0); x.lineTo(tT,yh); x.lineTo(t2,y0); x.lineTo(tT,y0); x.closePath(); x.fill();
+      x.fillStyle='rgba(197,155,255,0.7)'; x.font='9px sans-serif'; x.textAlign='center'; x.fillText('area A (Sagnac ∝ Ω)', tT, y0-ph*0.25); }
+    // arm A: rise 0->T then flat (top) ; arm B: flat then rise -> both meet at recombine
+    const armA=t=> t<0.5? y0+(yh-y0)*(t/0.5) : yh;
+    const armB=t=> t<0.5? y0 : y0+(yh-y0)*((t-0.5)/0.5);
+    const xt=f=>px+pw*f;
+    x.strokeStyle='#5fc9ff'; x.lineWidth=2.5; x.beginPath(); x.moveTo(xt(0),armA(0)); x.lineTo(xt(0.5),armA(0.5)); x.lineTo(xt(1),armA(1)); x.stroke();
+    x.strokeStyle='#ffcf5c'; x.beginPath(); x.moveTo(xt(0),armB(0)); x.lineTo(xt(0.5),armB(0.5)); x.lineTo(xt(1),armB(1)); x.stroke();
+    // moving wavepackets
+    function packet(px2,py2,col,amp){ x.save(); const g=x.createRadialGradient(px2,py2,0,px2,py2,9); g.addColorStop(0,col); g.addColorStop(1,'rgba(0,0,0,0)'); x.globalAlpha=amp; x.fillStyle=g; x.beginPath(); x.arc(px2,py2,9,0,7); x.fill(); x.restore(); }
+    if(cyc<0.02){ packet(xt(0),y0,'#e8edf4',1); }   // single cloud before split
+    else { packet(xt(cyc),armA(cyc),'#5fc9ff',0.9); packet(xt(cyc),armB(cyc),'#ffcf5c',0.9); }
+    // detection ports at recombine
+    if(cyc>0.9){ const b1=P, b2=1-P; x.fillStyle='#5fc9ff'; x.globalAlpha=b1; x.beginPath(); x.arc(xt(1)+14,yh-10,7,0,7); x.fill();
+      x.fillStyle='#ffcf5c'; x.globalAlpha=b2; x.beginPath(); x.arc(xt(1)+14,yh+12,7,0,7); x.fill(); x.globalAlpha=1;
+      x.fillStyle='#9fb0c3'; x.font='9px sans-serif'; x.textAlign='left'; x.fillText('detect',xt(1)+24,yh+2); }
+    x.fillStyle='#6b7d90'; x.font='9px sans-serif'; x.textAlign='center'; x.fillText('0',t0,py+18); x.fillText('T',tT,py+18); x.fillText('2T',t2,py+18);
+    x.textAlign='left'; x.fillText('time →',px,py+18); x.save(); x.translate(r.x+14,py-ph/2); x.rotate(-Math.PI/2); x.fillText('position',0,0); x.restore();
+    x.restore();
+  }
+  function drawFringe(pp){ const r=L.fr; x.save(); x.fillStyle='#0f1622'; x.strokeStyle='#2b3a4d'; x.fillRect(r.x,r.y,r.w,r.h); x.strokeRect(r.x,r.y,r.w,r.h);
+    x.fillStyle='#9fb0c3'; x.font='10px sans-serif'; x.textAlign='left'; x.fillText('interference fringe  P = ½(1 − C·cos Δφ)',r.x+6,r.y+14);
+    const gx=r.x+8,gy=r.y+22,gw=r.w-16,gh=r.h-34;
+    x.strokeStyle='rgba(90,110,130,0.25)'; x.beginPath(); x.moveTo(gx,gy+gh/2); x.lineTo(gx+gw,gy+gh/2); x.stroke();
+    x.strokeStyle='#37d6a0'; x.lineWidth=1.8; x.beginPath();
+    for(let i=0;i<=gw;i++){ const ph=(i/gw)*6*Math.PI-3*Math.PI; const P=0.5*(1-pp.C*Math.cos(ph)); const yy=gy+gh-(P)*gh; i?x.lineTo(gx+i,yy):x.moveTo(gx+i,yy); } x.stroke();
+    // operating point (current Δφ, wrapped)
+    let d=((pp.dTot+3*Math.PI)%(6*Math.PI)); if(d<0)d+=6*Math.PI; const opx=gx+d/(6*Math.PI)*gw; const opy=gy+gh-pp.P*gh;
+    x.fillStyle='#ffcf5c'; x.beginPath(); x.arc(opx,opy,4,0,7); x.fill(); x.strokeStyle='rgba(255,207,92,0.4)'; x.setLineDash([2,3]); x.beginPath(); x.moveTo(opx,gy); x.lineTo(opx,gy+gh); x.stroke(); x.setLineDash([]);
+    x.fillStyle='#9fb0c3'; x.font='9px sans-serif'; x.textAlign='right'; x.fillText('P='+pp.P.toFixed(3),r.x+r.w-6,r.y+14); x.restore();
+  }
+  function drawApparatus(){ const r=L.ap; x.save(); x.fillStyle='#0f1622'; x.strokeStyle='#2b3a4d'; x.fillRect(r.x,r.y,r.w,r.h); x.strokeRect(r.x,r.y,r.w,r.h);
+    x.fillStyle='#9fb0c3'; x.font='10px sans-serif'; x.textAlign='left'; x.fillText('apparatus (cold-atom source)',r.x+6,r.y+14);
+    const cx=r.x+r.w*0.5, cy=r.y+r.h*0.58, R=Math.min(r.w,r.h)*0.30;
+    x.strokeStyle='rgba(120,150,190,0.4)'; x.lineWidth=1.5; x.beginPath(); x.arc(cx,cy,R+8,0,7); x.stroke();   // magnetic shield / vacuum
+    // 6 MOT beams
+    x.strokeStyle='rgba(255,120,120,0.7)'; x.lineWidth=2; const dirs=[[1,0],[-1,0],[0,1],[0,-1],[0.7,0.7],[-0.7,-0.7]];
+    dirs.forEach(d=>{ x.beginPath(); x.moveTo(cx+d[0]*(R+6),cy+d[1]*(R+6)); x.lineTo(cx+d[0]*4,cy+d[1]*4); x.stroke(); });
+    // Raman beams (vertical)
+    x.strokeStyle='rgba(140,180,255,0.6)'; x.beginPath(); x.moveTo(cx,cy-R-6); x.lineTo(cx,cy+R+6); x.stroke();
+    // atom cloud
+    const gcl=x.createRadialGradient(cx,cy,0,cx,cy,6); gcl.addColorStop(0,'#e8f0ff'); gcl.addColorStop(1,'rgba(0,0,0,0)'); x.fillStyle=gcl; x.beginPath(); x.arc(cx,cy,6,0,7); x.fill();
+    x.fillStyle='#9fb0c3'; x.font='8px sans-serif'; x.textAlign='center'; x.fillText('MOT + atom cloud',cx,cy+R+18); x.textAlign='left';
+    x.fillStyle='#8fb6ff'; x.fillText('Raman',cx+4,r.y+r.h-6); x.fillStyle='#ff9090'; x.fillText('cooling lasers',r.x+6,r.y+r.h-6);
+    x.restore();
+  }
+  function drawDrift(pp){ const r=L.dr; x.save(); x.fillStyle='#0f1622'; x.strokeStyle='#2b3a4d'; x.fillRect(r.x,r.y,r.w,r.h); x.strokeRect(r.x,r.y,r.w,r.h);
+    x.fillStyle='#9fb0c3'; x.font='11px sans-serif'; x.textAlign='left'; x.fillText('bias stability over time — quantum is absolute (no drift); MEMS random-walks',r.x+8,r.y+15);
+    const gx=r.x+40,gy=r.y+24,gw=r.w-56,gh=r.h-40; x.strokeStyle='rgba(90,110,130,0.25)'; x.beginPath(); x.moveTo(gx,gy+gh/2); x.lineTo(gx+gw,gy+gh/2); x.stroke();
+    x.fillStyle='#6b7d90'; x.font='8px sans-serif'; x.textAlign='right'; x.fillText('+50 mg',gx-3,gy+8); x.fillText('0',gx-3,gy+gh/2+3); x.fillText('−50 mg',gx-3,gy+gh-2); x.textAlign='left'; x.fillText('time →',gx,gy+gh+12);
+    function plot(arr,col){ if(arr.length<2)return; x.strokeStyle=col; x.lineWidth=1.8; x.beginPath(); for(let i=0;i<arr.length;i++){ const px=gx+i/(arr.length-1)*gw, py=gy+gh/2-Math.max(-1,Math.min(1,arr[i]/50))*(gh/2-2); i?x.lineTo(px,py):x.moveTo(px,py); } x.stroke(); }
+    plot(mHist,'#ff6b6b'); plot(qHist,'#37d6a0');
+    x.fillStyle='#37d6a0'; x.font='10px sans-serif'; x.textAlign='right'; x.fillText('quantum',gx+gw,gy+12); x.fillStyle='#ff6b6b'; x.fillText('MEMS',gx+gw,gy+26); x.textAlign='left';
+    x.restore();
+  }
+
+  function fmt(v,unit,sig){ const a=Math.abs(v); if(a===0)return '0 '+unit; if(a<1e-6)return (v*1e9).toFixed(1)+' n'+unit; if(a<1e-3)return (v*1e6).toFixed(1)+' µ'+unit; if(a<1)return (v*1e3).toFixed(1)+' m'+unit; return v.toFixed(sig||3)+' '+unit; }
+
+  let last=performance.now(), cycAcc=0;
+  function frame(now){ const dt=Math.max(0,Math.min(0.05,(now-last)/1000)); last=now;
+    const pp=phys();
+    if(S.autoscan){ S.scan=(S.scan+dt*2)%(2*Math.PI); $('scan').value=Math.round(S.scan*100); $('scanV').textContent=S.scan.toFixed(2); }
+    if(S.play){ cyc+=dt/1.8; if(cyc>=1){ cyc-=1; // end of a measurement cycle -> record drift
+        driftT++; memsBias += (Math.random()*2-1)*1.6 + 0.35 + (S.tempuK-2)*0.05;   // random walk + trend + temp
+        mHist.push(memsBias); if(mHist.length>200)mHist.shift();
+        qHist.push((Math.random()*2-1)*(pp.da*1e3*1e3*0.02));  // essentially flat, tiny
+      } }
+
+    layout(); x.clearRect(0,0,cv.width,cv.height);
+    drawSpaceTime(pp.P); drawFringe(pp); drawApparatus(); if(S.drift) drawDrift(pp);
+
+    // readouts
+    $('mA').textContent=S.a.toFixed(5)+' m/s²';
+    $('mO').textContent=(S.Om*3600).toFixed(0)+' °/hr';
+    $('dpA').textContent=pp.dphiA.toExponential(2)+' rad';
+    $('dpO').textContent=(S.Om===0?'0':pp.dphiO.toExponential(2))+' rad';
+    $('ctr').textContent=(pp.C*100).toFixed(0)+' %';
+    $('sens').textContent=fmt(pp.da,'m/s²',2)+'/√Hz';
+    $('cyc').textContent=pp.cyc.toFixed(1)+' Hz';
+    $('vrec').textContent=(vrec*1000).toFixed(1)+' mm/s';
+
+    requestAnimationFrame(frame);
+  }
+  layout(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
