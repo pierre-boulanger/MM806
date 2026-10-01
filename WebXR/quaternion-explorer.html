@@ -1,12 +1,7 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Quaternion Explorer — MM-806</title>
+<title>Quaternion Explorer</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
-  :root{
+  :root{ color-scheme:dark;
     --bg:#0a1018; --panel:#0f1825; --panel-2:#13202f;
     --line:#1d2c41; --line-soft:#172435;
     --ink:#e8eef7; --muted:#8597b3; --faint:#5b6c87;
@@ -109,8 +104,6 @@
   .hidden{display:none !important}
   @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 </style>
-</head>
-<body>
 <div class="wrap">
 
   <header class="masthead">
@@ -170,11 +163,20 @@
 
         <!-- SLERP -->
         <div id="pane-sl" class="hidden">
+          <div class="note" style="margin-bottom:4px">Dial a pose, then store it as <b>A</b> or <b>B</b>. Move <b>t</b> to blend between them.</div>
+          <div class="ctl"><div class="row"><label for="sAngle">Pose angle θ</label><span class="val" id="sAngleV">120°</span></div>
+            <input class="amber" type="range" id="sAngle" min="0" max="360" step="1" value="120"/></div>
+          <div class="ctl"><div class="row"><label for="sAx">Pose axis · x</label><span class="val" id="sAxV">0.00</span></div>
+            <input type="range" id="sAx" min="-1" max="1" step="0.01" value="0"/></div>
+          <div class="ctl"><div class="row"><label for="sAy">Pose axis · y</label><span class="val" id="sAyV">1.00</span></div>
+            <input type="range" id="sAy" min="-1" max="1" step="0.01" value="1"/></div>
+          <div class="ctl"><div class="row"><label for="sAz">Pose axis · z</label><span class="val" id="sAzV">0.00</span></div>
+            <input type="range" id="sAz" min="-1" max="1" step="0.01" value="0"/></div>
           <div class="slerp-cards">
             <div class="scard A"><h4>Orientation <b>A</b></h4><div class="qv" id="qAtxt">—</div>
-              <button class="btn b" id="setA" style="margin-top:10px;width:100%">Set A = current</button></div>
+              <button class="btn b" id="setA" style="margin-top:10px;width:100%">Set A = this pose</button></div>
             <div class="scard B"><h4>Orientation <b>B</b></h4><div class="qv" id="qBtxt">—</div>
-              <button class="btn rose b" id="setB" style="margin-top:10px;width:100%">Set B = current</button></div>
+              <button class="btn rose b" id="setB" style="margin-top:10px;width:100%">Set B = this pose</button></div>
           </div>
           <div class="ctl" style="margin-top:16px"><div class="row"><label for="tee">Interpolation t</label><span class="val" id="teeV">0.00</span></div>
             <input class="amber" type="range" id="tee" min="0" max="1" step="0.005" value="0"/></div>
@@ -356,7 +358,7 @@
   let qB=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI*0.66);
   let curQuat=new THREE.Quaternion();
   // gimbal race endpoints (angle triples) chosen to swing through the danger zone
-  let poseA={h:-150,p:78,b:0}, poseB={h:150,p:78,b:0};
+  let poseA={h:-120,p:70,b:40}, poseB={h:120,p:110,b:-40};
 
   function renderReadout(el,q,neg){
     const sign=neg?-1:1, comps=[["w",q.w],["x",q.x],["y",q.y],["z",q.z]];
@@ -371,7 +373,8 @@
     $("angleV").textContent=theta+"°";
     $("axV").textContent=fmt(a.x,2).trim();$("ayV").textContent=fmt(a.y,2).trim();$("azV").textContent=fmt(a.z,2).trim();
     const q=quatFromAA(theta,a),neg=$("negq").checked,half=theta/2;
-    $("subEq").innerHTML='q = <b>'+q.w.toFixed(3)+'</b> + <b>'+Math.sin(half*DEG).toFixed(3)+'</b>·( '+fmt(a.x,2).trim()+'î + '+fmt(a.y,2).trim()+'ĵ + '+fmt(a.z,2).trim()+'k̂ )';
+    const sg=neg?-1:1;
+    $("subEq").innerHTML=(neg?'−q = <b>':'q = <b>')+(sg*q.w).toFixed(3)+'</b> + <b>'+(sg*Math.sin(half*DEG)).toFixed(3)+'</b>·( '+fmt(a.x,2).trim()+'î + '+fmt(a.y,2).trim()+'ĵ + '+fmt(a.z,2).trim()+'k̂ )';
     renderReadout($("qReadout"),q,neg);
     const s=neg?-1:1; curQuat.set(s*q.x,s*q.y,s*q.z,s*q.w); body.quaternion.copy(curQuat);
     axisGrp.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(a.x,a.y,a.z)));
@@ -386,7 +389,7 @@
   }
   function updateSlerp(){
     const t=+$("tee").value;$("teeV").textContent=t.toFixed(2);
-    const q=new THREE.Quaternion().slerpQuaternions(qA,qB,t); body.quaternion.copy(q); axisGrp.visible=false;
+    const q=qA.clone().slerp(qB,t); body.quaternion.copy(q); axisGrp.visible=false;
     renderReadout($("slReadout"),{w:q.w,x:q.x,y:q.y,z:q.z},false);
     const dot=Math.min(1,Math.abs(qA.x*qB.x+qA.y*qB.y+qA.z*qB.z+qA.w*qB.w)),ang=2*Math.acos(dot)/DEG;
     $("slNote").innerHTML='SLERP walks the <b>shortest arc</b> on the unit sphere from A to B — here about <b>'+ang.toFixed(0)+'°</b>. ‖q‖ stays <b>1.000</b> for every t, so no orientation is skewed or scaled. That constant-speed, always-valid arc is what a headset needs when it predicts where your head will be a few milliseconds from now.';
@@ -423,14 +426,19 @@
   }
   function runRace(t){
     $("gT").value=t; $("gTV").textContent=t.toFixed(2);
+    const sync=(id,v)=>{$(id).value=Math.round(v);$(id+"V").textContent=Math.round(v)+"°";};
     // LEFT: linearly interpolate the three angles, rebuild by nested rotation
     const h=lerp(poseA.h,poseB.h,t),p=lerp(poseA.p,poseB.p,t),b=lerp(poseA.b,poseB.b,t);
     gOuter.rotation.set(0,h*DEG,0); gMid.rotation.set(p*DEG,0,0); gInner.rotation.set(0,0,b*DEG);
+    sync("gHead",h); sync("gPitch",p); sync("gBank",b);
     refreshLockUI(p);
     // RIGHT: slerp the quaternions of A and B
     const qa=eulerToQuat(poseA.h,poseA.p,poseA.b), qb=eulerToQuat(poseB.h,poseB.p,poseB.b);
-    quatDart.quaternion.copy(new THREE.Quaternion().slerpQuaternions(qa,qb,t));
-    $("glNote").innerHTML='<span class="bad">Left — angle-lerp:</span> swings the heading the long way around and dips through the lock zone, so the dart <b>tumbles and speeds up</b> mid-path. <span class="term">Right — SLERP:</span> one clean arc, constant speed, no singularity. Same endpoints, completely different journey.';
+    quatDart.quaternion.copy(qa.clone().slerp(qb,t));
+    let eLen=0,prev=qa.clone();
+    for(let i=1;i<=60;i++){const u=i/60,qe=eulerToQuat(lerp(poseA.h,poseB.h,u),lerp(poseA.p,poseB.p,u),lerp(poseA.b,poseB.b,u));eLen+=prev.angleTo(qe);prev=qe;}
+    const sLen=qa.angleTo(qb);
+    $("glNote").innerHTML='<span class="bad">Left — angle-lerp:</span> sweeps heading the long way and crosses the lock zone, rotating the dart through about <b>'+(eLen/DEG).toFixed(0)+'°</b> in total. <span class="term">Right — SLERP:</span> the single shortest arc, <b>'+(sLen/DEG).toFixed(0)+'°</b>. Same endpoints, very different journey.';
   }
 
   function setMode(m){
@@ -443,9 +451,8 @@
     $("lockBadge").classList.toggle("hidden",!gl);
     $("hint").textContent=gl?"drag to orbit · left = 3-ring Euler gimbal · right = quaternion":"drag to orbit · the dart carries the body frame";
     Rtarget=gl?9.2:6.2;
-    racing=false;
+    racing=false; sweeping=false;
     if(aa)updateAA(); else if(sl){setQtext();updateSlerp();} else {updateGimbalManual();}
-    if(gl)$("lockBadge").classList.add("hidden");
   }
   $("tab-aa").onclick=()=>setMode("aa");
   $("tab-sl").onclick=()=>setMode("sl");
@@ -456,9 +463,25 @@
   $("negq").addEventListener("change",updateAA);
   $("presetX").onclick=()=>{$("angle").value=90;$("ax").value=1;$("ay").value=0;$("az").value=0;updateAA();};
   $("presetXYZ").onclick=()=>{$("angle").value=120;$("ax").value=1;$("ay").value=1;$("az").value=1;updateAA();};
-  // wiring: SLERP
-  $("setA").onclick=()=>{qA.copy(curQuat);setQtext();updateSlerp();};
-  $("setB").onclick=()=>{qB.copy(curQuat);setQtext();updateSlerp();};
+  // wiring: SLERP — its own pose sliders feed Set A / Set B
+  function slPose(){
+    let x=+$("sAx").value,y=+$("sAy").value,z=+$("sAz").value,n=Math.hypot(x,y,z);
+    if(n<1e-6){y=1;n=1;} const a=new THREE.Vector3(x/n,y/n,z/n);
+    return {a,q:new THREE.Quaternion().setFromAxisAngle(a,+$("sAngle").value*DEG)};
+  }
+  function previewPose(){
+    sweeping=false;
+    const {a,q}=slPose();
+    $("sAngleV").textContent=$("sAngle").value+"°";
+    $("sAxV").textContent=a.x.toFixed(2);$("sAyV").textContent=a.y.toFixed(2);$("sAzV").textContent=a.z.toFixed(2);
+    body.quaternion.copy(q); axisGrp.visible=true;
+    axisGrp.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),a));
+    renderReadout($("slReadout"),{w:q.w,x:q.x,y:q.y,z:q.z},false);
+    $("slNote").innerHTML='Previewing a <b>pose</b>, not the blend. Press <b>Set A</b> or <b>Set B</b> to store it, then move <b>t</b>.';
+  }
+  ["sAngle","sAx","sAy","sAz"].forEach(id=>$(id).addEventListener("input",previewPose));
+  $("setA").onclick=()=>{qA.copy(slPose().q);setQtext();$("tee").value=0;updateSlerp();};
+  $("setB").onclick=()=>{qB.copy(slPose().q);setQtext();$("tee").value=1;updateSlerp();};
   $("swapAB").onclick=()=>{const t=qA.clone();qA.copy(qB);qB.copy(t);setQtext();updateSlerp();};
   $("tee").addEventListener("input",updateSlerp);
   let sweeping=false,sweepStart=0; $("playSlerp").onclick=()=>{sweeping=true;sweepStart=performance.now();};
@@ -482,5 +505,3 @@
   resize(); setMode("aa"); requestAnimationFrame(tick);
 })();
 </script>
-</body>
-</html>
