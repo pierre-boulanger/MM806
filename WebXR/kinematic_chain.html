@@ -45,12 +45,39 @@
     background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 12px;cursor:pointer;}
   .panel .btn:hover{border-color:var(--signal);color:var(--signal);}
 
-  .status{left:0;bottom:0;padding:16px 20px;max-width:52ch;font-size:12px;line-height:1.5;color:var(--ink-dim);}
+  .panel{max-height:calc(100vh - 196px);overflow:auto;}
+  .panel select{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;
+    padding:5px 6px;font:12px ui-sans-serif,system-ui,sans-serif;}
+  .btnrow{display:flex;gap:6px;flex-wrap:wrap;}
+  .btnrow .btn{flex:1 1 auto;padding:8px 8px;font-size:11px;}
+  .panel .btn:disabled{opacity:.4;cursor:default;border-color:var(--line);color:var(--ink);}
+  .hint{font-size:11px;color:var(--ink-dim);line-height:1.4;}
+  .results{top:118px;right:20px;width:min(440px, calc(100vw - 290px));pointer-events:auto;background:rgba(21,27,36,.94);
+    border:1px solid var(--line);border-radius:10px;padding:12px 14px 12px;}
+  .results h3{margin:0 0 8px;font:600 10px/1 ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--signal);
+    display:flex;justify-content:space-between;}
+  .results h3 span{color:var(--ink-dim);letter-spacing:.06em;}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 10px;margin-bottom:10px;}
+  .stats div{font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.08em;}
+  .stats b{display:block;font:600 13px/1.3 ui-monospace,monospace;color:var(--ink);letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums;}
+  .stats b.warn{color:#ff8a7a;}
+  #traj-chart{display:block;width:100%;height:230px;}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font:11px ui-monospace,monospace;color:var(--ink-dim);margin:6px 0 8px;}
+  .legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle;}
+  .scrub{display:flex;align-items:center;gap:8px;}
+  .scrub input{flex:1;accent-color:var(--signal);}
+  .scrub .val{font:12px ui-monospace,monospace;color:var(--ink);min-width:9ch;text-align:right;font-variant-numeric:tabular-nums;}
+  .results .btn{font:600 11px/1 ui-sans-serif,system-ui,sans-serif;color:var(--ink);background:var(--panel);border:1px solid var(--line);
+    border-radius:7px;padding:7px 10px;cursor:pointer;}
+  .results .btn:hover{border-color:var(--signal);color:var(--signal);}
+  @media (max-width:900px){ .results{top:auto;bottom:12px;right:12px;width:calc(100vw - 24px);} #traj-chart{height:170px;}
+    body.has-results .status{display:none;} body.has-results .panel{max-height:calc(100vh - 500px);min-height:120px;} }
+  .status{left:12px;bottom:12px;padding:10px 14px;max-width:52ch;background:rgba(13,17,23,.82);border:1px solid var(--line);border-radius:8px;font-size:12px;line-height:1.5;color:var(--ink-dim);}
   .status .pill{display:inline-block;font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;
     text-transform:uppercase;padding:4px 7px;border:1px solid var(--line);border-radius:5px;margin-right:6px;color:var(--ink);}
 
   @media (max-width:600px){
-    .panel{top:8px;left:8px;width:174px;} .masthead{display:none;} .status{display:none;}
+    .panel{top:8px;left:8px;width:174px;max-height:45vh;} .masthead{display:none;} .status{display:none;}
   }
 </style>
 <!-- Inlined three.js r137 + OrbitControls (classic globals) so the file is
@@ -1186,6 +1213,53 @@
         <label>Target Z <input type="range" id="t-z" min="-3" max="3" step="0.05" value="0.5"></label>
         <label class="row">error&nbsp; <span class="val" id="ik-err">&mdash;</span></label>
       </div>
+      <div class="grp">
+        <div class="grp-title">Trajectory</div>
+        <label>Path
+          <select id="tr-shape">
+            <option value="circle" selected>Circle</option>
+            <option value="line">Straight line</option>
+            <option value="eight">Figure-8</option>
+            <option value="square">Square</option>
+            <option value="way">Waypoints</option>
+          </select></label>
+        <label>Plane
+          <select id="tr-plane">
+            <option value="xy" selected>Vertical, facing +z (XY)</option>
+            <option value="zy">Vertical, facing +x (ZY)</option>
+            <option value="xz">Horizontal (XZ)</option>
+          </select></label>
+        <label>Size <span class="val" id="tr-size-v">0.60</span><input type="range" id="tr-size" min="0.1" max="2" step="0.05" value="0.6"></label>
+        <label>Samples <span class="val" id="tr-n-v">120</span><input type="range" id="tr-n" min="10" max="400" step="10" value="120"></label>
+        <div class="btnrow" id="way-row" hidden>
+          <button class="btn" id="tr-add">Add waypoint</button><button class="btn" id="tr-clear">Clear</button>
+        </div>
+        <div class="hint" id="tr-hint">Centred on the target. Move Target X/Y/Z to place it.</div>
+        <button class="btn" id="tr-compute">Compute IK along path</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay results" id="results" hidden>
+    <h3>Trajectory IK results <span id="r-sub"></span></h3>
+    <div class="stats">
+      <div>Samples<b id="r-n">&mdash;</b></div>
+      <div>Max error<b id="r-max">&mdash;</b></div>
+      <div>RMS error<b id="r-rms">&mdash;</b></div>
+      <div>Out of reach<b id="r-unr">&mdash;</b></div>
+      <div>Max joint step<b id="r-step">&mdash;</b></div>
+      <div>Solve time<b id="r-time">&mdash;</b></div>
+    </div>
+    <canvas id="traj-chart"></canvas>
+    <div class="legend" id="r-legend"></div>
+    <div class="scrub">
+      <button class="btn" id="r-play">Pause</button>
+      <input type="range" id="r-scrub" min="0" max="1000" step="1" value="0" aria-label="Playback position">
+      <span class="val" id="r-pos">0 / 0</span>
+    </div>
+    <div class="btnrow" style="margin-top:8px">
+      <button class="btn" id="r-csv">Export CSV</button>
+      <button class="btn" id="r-stop">Back to manual</button>
     </div>
   </div>
 
@@ -1233,7 +1307,7 @@ scene.add(new THREE.HemisphereLight(0x9fb6c8, 0x101418, 0.7));
 
 const ground = new THREE.Mesh(
   new THREE.CircleGeometry(6, 64),
-  new THREE.MeshStandardMaterial({ color:0x11161e, roughness:0.95 }));
+  new THREE.MeshStandardMaterial({ color:new THREE.Color(0x11161e).convertSRGBToLinear(), roughness:0.95 }));  // hex is sRGB; renderer outputs sRGB
 ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
 scene.add(new THREE.GridHelper(12, 24, 0x223040, 0x182230));
 const worldAxes = new THREE.AxesHelper(1.0);          // the fixed base/world frame
@@ -1410,22 +1484,45 @@ function ccdPass(){
     if (_e.lengthSq() < 1e-8 || _t.lengthSq() < 1e-8) continue;
     _e.normalize(); _t.normalize();
     const ang = Math.atan2(_c.crossVectors(_e, _t).dot(_a), _e.dot(_t));  // signed angle
+    const prev = angles[i];
     angles[i] = wrapPi(angles[i] + ang);
+    if (belowFloor()) angles[i] = prev;          // reject a step that drives the arm through the floor
   }
 }
+const _f = new THREE.Vector3();
+function belowFloor(){                           // any joint or the gripper under y = 0?
+  applyAngles(); scene.updateMatrixWorld(true);
+  for (let j = 1; j < joints.length; j++){ joints[j].pivot.getWorldPosition(_f); if (_f.y < 0) return true; }
+  ee.getWorldPosition(_f); return _f.y < 0;
+}
+// The floor rule can trap CCD in a local minimum (a step that would help is
+// rejected because it dips a joint below y = 0). When the error stops falling
+// short of the target, restart from the arm standing upright and solve again.
+let ikRestarts = 0;
 function solveIK(iters){
+  ee.getWorldPosition(eeWorld); const before = eeWorld.distanceTo(target);
   for (let k=0;k<iters;k++) ccdPass();
   applyAngles(); scene.updateMatrixWorld(true); ee.getWorldPosition(eeWorld);
+  const after = eeWorld.distanceTo(target);
+  const reachable = target.distanceTo(SHOULDER) <= REACH;
+  if (reachable && after > 1e-3 && before - after < 1e-6 && ikRestarts < 2){
+    ikRestarts++;
+    for (let i = 1; i < angles.length; i++) angles[i] = 0;
+    for (let k=0;k<iters;k++) ccdPass();
+    applyAngles(); scene.updateMatrixWorld(true); ee.getWorldPosition(eeWorld);
+  }
 }
 
 // IK controls
+const SHOULDER = new THREE.Vector3(0, CONFIG[0].len, 0);
+const REACH = CONFIG.slice(1).reduce((s, c) => s + c.len, 0);
 let ikOn = false;
 const tIn = { x:$('t-x'), y:$('t-y'), z:$('t-z') };
-const readTarget = () => target.set(+tIn.x.value, +tIn.y.value, +tIn.z.value);
+const readTarget = () => { target.set(+tIn.x.value, +tIn.y.value, +tIn.z.value); ikRestarts = 0; };
 ['x','y','z'].forEach(k => tIn[k].addEventListener('input', readTarget));
 readTarget();
 $('c-ik').addEventListener('change', () => {
-  ikOn = $('c-ik').checked;
+  ikOn = $('c-ik').checked; ikRestarts = 0;
   targetMesh.visible = ikOn; errLine.visible = ikOn;
   if (ikOn && $('c-wave').checked){ $('c-wave').checked = false; waveOn = false; }
   sliders.forEach(sl => sl.disabled = ikOn);   // joints are OUTPUTS while IK solves
@@ -1433,12 +1530,283 @@ $('c-ik').addEventListener('change', () => {
 });
 
 // ===========================================================================
+//  Trajectory IK
+//  A path is sampled into N target points. IK is solved at each one in order,
+//  warm-started from the previous solution, so the joint angles form a smooth
+//  time series wherever the path stays reachable. The results are replayed on
+//  the arm and plotted: joint angles (unwrapped) and position error per sample.
+// ===========================================================================
+let trajActive = false, trajPlaying = true, trajHead = 0, lastT = 0;
+let traj = null;                        // computed result
+const waypoints = [];
+const PLANES = {
+  xy: [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0)],
+  zy: [new THREE.Vector3(0,0,1), new THREE.Vector3(0,1,0)],
+  xz: [new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,1)],
+};
+const trEl = { shape:$('tr-shape'), plane:$('tr-plane'), size:$('tr-size'), n:$('tr-n') };
+
+function pathPoint(shape, u, c, A, B, s, out){
+  const TAU = Math.PI*2;
+  let a = 0, b = 0;
+  if (shape === 'line'){ a = (u - 0.5)*2*s; }
+  else if (shape === 'circle'){ a = s*Math.cos(TAU*u); b = s*Math.sin(TAU*u); }
+  else if (shape === 'eight'){ a = s*Math.sin(TAU*u); b = 0.5*s*Math.sin(2*TAU*u); }
+  else if (shape === 'square'){
+    const q = (u*4) % 4, k = Math.floor(q), f = q - k;      // walk the perimeter at constant speed
+    const C = [[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]];
+    a = s*(C[k][0] + (C[k+1][0]-C[k][0])*f); b = s*(C[k][1] + (C[k+1][1]-C[k][1])*f);
+  }
+  return out.copy(c).addScaledVector(A, a).addScaledVector(B, b);
+}
+function samplePolyline(pts, n){        // n points evenly spaced by arc length
+  const seg = [], out = []; let L = 0;
+  for (let i=1;i<pts.length;i++){ const d = pts[i].distanceTo(pts[i-1]); seg.push(d); L += d; }
+  for (let k=0;k<n;k++){
+    let d = L*k/(n-1), i = 0;
+    while (i < seg.length-1 && d > seg[i]){ d -= seg[i]; i++; }
+    const f = seg[i] > 0 ? Math.min(1, d/seg[i]) : 0;
+    out.push(pts[i].clone().lerp(pts[i+1], f));
+  }
+  return out;
+}
+function buildPath(){
+  const shape = trEl.shape.value, n = +trEl.n.value;
+  if (shape === 'way') return waypoints.length >= 2 ? samplePolyline(waypoints, n) : [];
+  const c = new THREE.Vector3(+tIn.x.value, +tIn.y.value, +tIn.z.value);
+  const [A, B] = PLANES[trEl.plane.value], s = +trEl.size.value, pts = [];
+  for (let k=0;k<n;k++) pts.push(pathPoint(shape, k/(n-1), c, A, B, s, new THREE.Vector3()));
+  return pts;
+}
+
+// --- scene objects: planned path, achieved path, failed samples, waypoint markers
+function makeLine(color, opacity){
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3*400), 3));
+  g.setDrawRange(0, 0);
+  return new THREE.Line(g, new THREE.LineBasicMaterial({ color, transparent:opacity<1, opacity }));
+}
+function setLine(line, pts){
+  const need = pts.length*3, attr = line.geometry.attributes.position;
+  if (attr.array.length < need) line.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(need), 3));
+  const a = line.geometry.attributes.position.array;
+  pts.forEach((p,i) => { a[3*i]=p.x; a[3*i+1]=p.y; a[3*i+2]=p.z; });
+  line.geometry.attributes.position.needsUpdate = true; line.geometry.setDrawRange(0, pts.length);
+  line.geometry.computeBoundingSphere();
+}
+const plannedLine = makeLine(0xff5fa2, 0.85); scene.add(plannedLine);
+const achievedLine = makeLine(0x5ef0c8, 1); achievedLine.visible = false; scene.add(achievedLine);
+const failGeo = new THREE.BufferGeometry();
+failGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3*400), 3)); failGeo.setDrawRange(0,0);
+const failPts = new THREE.Points(failGeo, new THREE.PointsMaterial({ color:0xff4d4d, size:0.09 }));
+failPts.visible = false; scene.add(failPts);
+const wpGroup = new THREE.Group(); scene.add(wpGroup);
+const wpMat = new THREE.MeshStandardMaterial({ color:0xff5fa2, emissive:0x3a0f24, roughness:0.4 });
+
+function refreshPreview(){
+  const shape = trEl.shape.value;
+  $('way-row').hidden = shape !== 'way';
+  trEl.plane.disabled = trEl.size.disabled = shape === 'way';
+  $('tr-size-v').textContent = (+trEl.size.value).toFixed(2);
+  $('tr-n-v').textContent = trEl.n.value;
+  const pts = buildPath();
+  setLine(plannedLine, pts);
+  wpGroup.clear();
+  if (shape === 'way') waypoints.forEach(w => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.06,12,10), wpMat); m.position.copy(w); wpGroup.add(m); });
+  $('tr-hint').textContent = shape === 'way'
+    ? (waypoints.length + ' waypoint' + (waypoints.length===1?'':'s') + '. Move the target and press Add waypoint; at least 2 are needed.')
+    : 'Centred on the target. Move Target X/Y/Z to place it.';
+  $('tr-compute').disabled = pts.length < 2;
+}
+['shape','plane','size','n'].forEach(k => trEl[k].addEventListener('input', refreshPreview));
+['x','y','z'].forEach(k => tIn[k].addEventListener('input', () => { if (!trajActive) refreshPreview(); }));
+$('tr-add').addEventListener('click', () => { waypoints.push(new THREE.Vector3(+tIn.x.value, +tIn.y.value, +tIn.z.value)); refreshPreview(); });
+$('tr-clear').addEventListener('click', () => { waypoints.length = 0; refreshPreview(); });
+
+// --- solve
+function solvePoint(p){
+  target.copy(p); ikRestarts = 0;
+  let passes = 0;
+  for (; passes < 300; passes += 5){ solveIK(5); if (eeWorld.distanceTo(target) < 1e-4) break; }
+  return passes + 5;
+}
+function computeTrajectory(){
+  const pts = buildPath(); if (pts.length < 2) return;
+  if ($('c-ik').checked){ $('c-ik').checked = false; $('c-ik').dispatchEvent(new Event('change')); }
+  if ($('c-wave').checked){ $('c-wave').checked = false; $('c-wave').dispatchEvent(new Event('change')); }
+  const t0 = performance.now();
+  const res = { pts, ang:[], ee:[], err:[], reach:[], passes:[], shape:trEl.shape.selectedOptions[0].text };
+  for (let k=0;k<pts.length;k++){
+    const passes = solvePoint(pts[k]);
+    const prev = k ? res.ang[k-1] : null;           // unwrap so angles are continuous across ±180°
+    res.ang.push(angles.map((a,j) => prev ? prev[j] + wrapPi(a - prev[j]) : a));
+    res.ee.push(eeWorld.clone());
+    res.err.push(eeWorld.distanceTo(pts[k]));
+    res.reach.push(pts[k].distanceTo(SHOULDER) <= REACH && pts[k].y >= 0);
+    res.passes.push(passes);
+  }
+  res.ms = performance.now() - t0;
+  let maxStep = 0, se = 0;
+  for (let k=1;k<pts.length;k++) for (let j=0;j<4;j++) maxStep = Math.max(maxStep, Math.abs(res.ang[k][j]-res.ang[k-1][j]));
+  res.err.forEach(e => se += e*e);
+  res.maxStep = maxStep*R2D; res.rms = Math.sqrt(se/pts.length); res.max = Math.max(...res.err);
+  res.unreach = res.reach.filter(r => !r).length;
+  res.failed = res.err.map((e,k) => e > 1e-3 ? k : -1).filter(k => k >= 0);
+  traj = res;
+
+  setLine(achievedLine, res.ee); achievedLine.visible = true;
+  const fa = failGeo.attributes.position;
+  if (fa.array.length < 3*pts.length) failGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3*pts.length), 3));
+  res.failed.forEach((k,i) => { const a = failGeo.attributes.position.array; a[3*i]=pts[k].x; a[3*i+1]=pts[k].y; a[3*i+2]=pts[k].z; });
+  failGeo.attributes.position.needsUpdate = true; failGeo.setDrawRange(0, res.failed.length); failGeo.computeBoundingSphere();
+  failPts.visible = true;
+
+  const fmt = v => v < 1e-4 ? v.toExponential(1) : v.toFixed(4);
+  $('r-sub').textContent = res.shape;
+  $('r-n').textContent = pts.length;
+  $('r-max').textContent = fmt(res.max); $('r-max').classList.toggle('warn', res.max > 1e-3);
+  $('r-rms').textContent = fmt(res.rms);
+  $('r-unr').textContent = res.unreach; $('r-unr').classList.toggle('warn', res.unreach > 0);
+  $('r-step').textContent = res.maxStep.toFixed(1) + '°'; $('r-step').classList.toggle('warn', res.maxStep > 20);
+  $('r-time').textContent = res.ms.toFixed(0) + ' ms';
+  $('results').hidden = false; document.body.classList.add('has-results');
+  trajHead = 0; trajPlaying = true; $('r-play').textContent = 'Pause';
+  setTrajActive(true);
+}
+$('tr-compute').addEventListener('click', computeTrajectory);
+
+function setTrajActive(on){
+  trajActive = on && !!traj;
+  sliders.forEach(sl => sl.disabled = trajActive || ikOn || waveOn);
+  targetMesh.visible = errLine.visible = trajActive || ikOn;
+  ['x','y','z'].forEach(k => tIn[k].disabled = trajActive);
+  if (!trajActive){ readTarget(); refreshPreview(); }
+}
+$('c-ik').addEventListener('change', () => { if ($('c-ik').checked && trajActive) setTrajActive(false); });
+$('c-wave').addEventListener('change', () => { if ($('c-wave').checked && trajActive) setTrajActive(false); });
+$('r-stop').addEventListener('click', () => setTrajActive(false));
+$('r-play').addEventListener('click', () => {
+  if (!trajActive){ setTrajActive(true); trajPlaying = true; }
+  else trajPlaying = !trajPlaying;
+  $('r-play').textContent = trajPlaying ? 'Pause' : 'Play';
+});
+$('r-scrub').addEventListener('input', () => {
+  if (!traj) return;
+  if (!trajActive) setTrajActive(true);
+  trajPlaying = false; $('r-play').textContent = 'Play';
+  trajHead = (+$('r-scrub').value/1000) * (traj.pts.length - 1);
+});
+$('r-csv').addEventListener('click', () => {
+  if (!traj) return;
+  const rows = ['sample,target_x,target_y,target_z,J1_deg,J2_deg,J3_deg,J4_deg,ee_x,ee_y,ee_z,error,reachable,ccd_passes'];
+  traj.pts.forEach((p,k) => rows.push([k, p.x, p.y, p.z, ...traj.ang[k].map(a => a*R2D), traj.ee[k].x, traj.ee[k].y, traj.ee[k].z,
+    traj.err[k], traj.reach[k] ? 1 : 0, traj.passes[k]].map(v => typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(5) : v).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([rows.join('\n')], { type:'text/csv' }));
+  a.download = 'ik_trajectory_' + trEl.shape.value + '.csv'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+// --- per-frame playback: interpolate the solved joint series
+function trajFrame(dt){
+  const N = traj.pts.length;
+  if (trajPlaying) trajHead = (trajHead + dt * N / 5) % (N - 1);      // whole path in ~5 s
+  const k = Math.min(N - 2, Math.floor(trajHead)), f = trajHead - k;
+  for (let j=0;j<angles.length;j++){
+    angles[j] = traj.ang[k][j] + (traj.ang[k+1][j] - traj.ang[k][j]) * f;
+    sliders[j].value = Math.round(wrapPi(angles[j])*R2D);
+    $('jv'+j).innerHTML = Math.round(wrapPi(angles[j])*R2D) + '&deg;';
+  }
+  target.copy(traj.pts[k]).lerp(traj.pts[k+1], f);
+  if (trajPlaying) $('r-scrub').value = Math.round(1000 * trajHead / (N - 1));
+  $('r-pos').textContent = Math.round(trajHead) + ' / ' + (N - 1);
+  drawChart();
+}
+
+// --- chart: joint angles (top) and position error (bottom) against sample index
+const chart = $('traj-chart'), cx = chart.getContext('2d');
+const JCSS = JOINT_COL.map(c => '#' + c.toString(16).padStart(6,'0'));
+$('r-legend').innerHTML = CONFIG.map((c,i) => '<span><i style="background:'+JCSS[i]+'"></i>'+c.name+'</span>').join('')
+  + '<span><i style="background:#ff5fa2"></i>error</span><span><i style="background:#ff4d4d;height:8px;width:3px"></i>&gt; 1e-3</span>';
+function niceStep(range, target){ const raw = range/target, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw/p;
+  return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p; }
+function drawChart(){
+  if (!traj || $('results').hidden) return;
+  const dpr = Math.min(window.devicePixelRatio, 2), W = chart.clientWidth, H = chart.clientHeight;
+  if (chart.width !== Math.round(W*dpr) || chart.height !== Math.round(H*dpr)){ chart.width = Math.round(W*dpr); chart.height = Math.round(H*dpr); }
+  cx.setTransform(dpr,0,0,dpr,0,0); cx.clearRect(0,0,W,H);
+  const N = traj.pts.length, L = 44, R = 8, top = 6, gap = 22, eH = Math.max(40, H*0.26), aH = H - top - gap - eH - 16;
+  const X = k => L + (W - L - R) * k / (N - 1);
+  cx.font = '10px ui-monospace, Menlo, monospace'; cx.textBaseline = 'middle';
+  // angle panel
+  let lo = Infinity, hi = -Infinity;
+  traj.ang.forEach(a => a.forEach(v => { lo = Math.min(lo, v*R2D); hi = Math.max(hi, v*R2D); }));
+  if (hi - lo < 10){ const m = (hi+lo)/2; lo = m - 5; hi = m + 5; }
+  const st = niceStep(hi - lo, 4); lo = Math.floor(lo/st)*st; hi = Math.ceil(hi/st)*st;
+  const YA = v => top + aH * (1 - (v - lo)/(hi - lo));
+  cx.strokeStyle = '#232c38'; cx.fillStyle = '#6b7888'; cx.lineWidth = 1; cx.textAlign = 'right';
+  for (let v = lo; v <= hi + 1e-9; v += st){ const y = Math.round(YA(v)) + 0.5;
+    cx.beginPath(); cx.moveTo(L, y); cx.lineTo(W - R, y); cx.stroke(); cx.fillText(Math.round(v) + '°', L - 5, y); }
+  traj.failed.forEach(k => { cx.fillStyle = 'rgba(255,77,77,.16)'; cx.fillRect(X(k) - 1.5, top, 3, aH); });
+  for (let j=0;j<4;j++){
+    cx.strokeStyle = JCSS[j]; cx.lineWidth = 1.6; cx.beginPath();
+    traj.ang.forEach((a,k) => { const x = X(k), y = YA(a[j]*R2D); k ? cx.lineTo(x,y) : cx.moveTo(x,y); }); cx.stroke();
+  }
+  // error panel
+  const e0 = top + aH + gap, eMax = Math.max(1e-3, traj.max) * 1.15;
+  const YE = v => e0 + eH * (1 - v/eMax);
+  cx.fillStyle = '#6b7888'; cx.textAlign = 'left'; cx.fillText('position error', L, e0 - 9);
+  cx.textAlign = 'right'; cx.strokeStyle = '#232c38'; cx.lineWidth = 1;
+  [0, eMax/1.15].forEach(v => { const y = Math.round(YE(v)) + 0.5; cx.beginPath(); cx.moveTo(L, y); cx.lineTo(W - R, y); cx.stroke();
+    cx.fillText(v === 0 ? '0' : (v < 0.01 ? v.toExponential(0) : v.toFixed(2)), L - 5, y); });
+  if (eMax > 1e-3*1.2){ const y = Math.round(YE(1e-3)) + 0.5; cx.setLineDash([3,3]); cx.strokeStyle = '#ff4d4d';
+    cx.beginPath(); cx.moveTo(L, y); cx.lineTo(W - R, y); cx.stroke(); cx.setLineDash([]); }
+  cx.beginPath(); cx.moveTo(X(0), YE(0));
+  traj.err.forEach((e,k) => cx.lineTo(X(k), YE(e))); cx.lineTo(X(N-1), YE(0)); cx.closePath();
+  cx.fillStyle = 'rgba(255,95,162,.25)'; cx.fill();
+  cx.strokeStyle = '#ff5fa2'; cx.lineWidth = 1.4; cx.beginPath();
+  traj.err.forEach((e,k) => { const x = X(k), y = YE(e); k ? cx.lineTo(x,y) : cx.moveTo(x,y); }); cx.stroke();
+  // x axis + playhead
+  cx.fillStyle = '#6b7888'; cx.textAlign = 'center'; cx.textBaseline = 'top';
+  const xs = niceStep(N - 1, 5);
+  for (let k = 0; k <= N - 1; k += xs) cx.fillText(String(k), X(k), e0 + eH + 4);
+  cx.textAlign = 'right'; cx.fillText('sample', W - R, e0 + eH + 4);
+  const px = Math.round(X(trajHead)) + 0.5;
+  cx.strokeStyle = '#c9d4e0'; cx.lineWidth = 1; cx.beginPath(); cx.moveTo(px, top); cx.lineTo(px, e0 + eH); cx.stroke();
+}
+window.addEventListener('resize', drawChart);
+refreshPreview();
+
+// status line: which mode is driving the joints, and whether the target is reachable
+const FK_TEXT = $('status-text').textContent;
+let lastStatus = '';
+function updateStatus(){
+  let pill = 'FK', text = FK_TEXT;
+  if (ikOn){
+    const d = target.distanceTo(SHOULDER), err = eeWorld.distanceTo(target);
+    pill = 'IK';
+    if (d > REACH) text = 'Target is out of reach: ' + d.toFixed(2) + ' from the shoulder, arm length ' + REACH.toFixed(2) + '. CCD stretches the arm straight toward it and stops ' + (d - REACH).toFixed(2) + ' short.';
+    else if (err > 0.01) text = 'CCD is sweeping tip to base, turning each joint about its own axis to aim the gripper at the target.';
+    else text = 'Solved. The joint angles on the sliders are now outputs of the solver.';
+  } else if (waveOn) pill = 'FK · wave';
+  if (trajActive){
+    pill = 'IK · path';
+    text = traj.failed.length
+      ? traj.failed.length + ' of ' + traj.pts.length + ' samples miss the path by more than 0.001 (red). ' + (traj.unreach ? traj.unreach + ' lie beyond the arm’s reach.' : 'They are reachable, but CCD did not settle there.')
+      : 'All ' + traj.pts.length + ' samples solved. Pink is the planned path, cyan is where the gripper actually went.';
+  }
+  const key = pill + text;
+  if (key !== lastStatus){ $('pill').textContent = pill; $('status-text').textContent = text; lastStatus = key; }
+}
+
+// ===========================================================================
 //  Render loop
 // ===========================================================================
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
-  const t = clock.getElapsedTime();
-  if (ikOn){
+  const t = clock.getElapsedTime(), dt = Math.min(0.1, t - lastT); lastT = t;
+  if (trajActive){
+    trajFrame(dt);
+  } else if (ikOn){
     solveIK(5);                                  // a few CCD sweeps this frame
     for (let i=0;i<angles.length;i++){           // mirror solved angles onto sliders
       sliders[i].value = Math.round(angles[i]*R2D);
@@ -1463,7 +1831,8 @@ renderer.setAnimationLoop(() => {
   const ep = errGeo.attributes.position.array;   // EE -> target error line
   ep[0]=eeWorld.x; ep[1]=eeWorld.y; ep[2]=eeWorld.z; ep[3]=target.x; ep[4]=target.y; ep[5]=target.z;
   errGeo.attributes.position.needsUpdate = true;
-  $('ik-err').innerHTML = ikOn ? eeWorld.distanceTo(target).toFixed(3) : '&mdash;';
+  $('ik-err').innerHTML = (ikOn || trajActive) ? eeWorld.distanceTo(target).toFixed(3) : '&mdash;';
+  updateStatus();
 
   if (traceOn) pushTrace();
 
