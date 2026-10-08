@@ -39,6 +39,12 @@
   .status{left:0;bottom:0;padding:14px 18px;max-width:52ch;font-size:12px;line-height:1.5;color:var(--ink-dim);}
   .status .pill{display:inline-block;font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;padding:4px 7px;border:1px solid var(--line);border-radius:5px;margin-right:6px;color:var(--ink);}
   @media (max-width:600px){.panel{top:8px;left:8px;width:172px;}.masthead{display:none;}.status{display:none;}}
+  .loupe-frame{right:18px;bottom:18px;width:300px;height:300px;border:1px solid var(--signal);border-radius:4px;box-shadow:0 0 0 1px rgba(0,0,0,.6);}
+  .loupe-labels{position:absolute;left:0;right:0;top:-22px;display:flex;font:600 10px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--signal);}
+  .loupe-labels span{flex:1;text-align:center;}
+  .status{left:250px;right:340px;max-width:60ch;}
+  @media (max-width:1100px){.status{display:none;}}
+  @media (max-width:600px){.loupe-frame{width:170px;height:170px;}}
 </style>
 <!-- Inlined three.js r137 (offline, works on file:// and mobile). -->
 <script>
@@ -57,7 +63,7 @@
   <div class="overlay masthead">
     <div class="course">MM806 · VR / AR</div>
     <div class="title">HMD Simulator</div>
-    <div class="sub">Stereo · lens distortion · head tracking</div>
+    <div class="sub">Stereo · lens distortion · display panels · head tracking</div>
   </div>
 
   <div class="overlay hud" id="hud" aria-hidden="true">
@@ -67,7 +73,9 @@
     <div>source <b id="h-src">drag</b></div>
     <div>panel <b id="h-disp">OLED</b></div>
     <div>pixel <b id="h-pix">5</b>px</div>
-    <div>persist <b id="h-per">8</b>%</div>
+    <div>persist <b id="h-per">18</b>% · <b id="h-ton">2.0</b> ms</div>
+    <div>response <b id="h-resp">0.1</b> ms</div>
+    <div>retinal smear <b id="h-smear">0.0</b>px</div>
   </div>
 
   <div class="overlay panel" id="panel">
@@ -80,11 +88,14 @@
           <button class="disp-btn" id="d-lcd">LCD</button>
           <button class="disp-btn active" id="d-oled">OLED</button>
         </div>
-        <label>Pixel size <span class="val" id="v-pix">5 px</span><input type="range" id="s-pix" min="2" max="12" step="1" value="5"></label>
-        <label>Persistence <span class="val" id="v-per">8%</span><input type="range" id="s-per" min="0" max="90" step="1" value="8"></label>
+        <label>Pixel pitch <span class="val" id="v-pix">5 px</span><input type="range" id="s-pix" min="2" max="16" step="1" value="5"></label>
+        <label>Persistence (lit fraction of frame) <span class="val" id="v-per">18%</span><input type="range" id="s-per" min="2" max="100" step="1" value="18"></label>
+        <label>Response time (GtG) <span class="val" id="v-resp">0.1 ms</span><input type="range" id="s-resp" min="0" max="20" step="0.1" value="0.1"></label>
         <label class="row"><input type="checkbox" id="c-sub" checked> Subpixel structure</label>
-        <label class="row"><input type="checkbox" id="c-sde" checked> Screen-door effect</label>
-        <label class="row"><input type="checkbox" id="c-scan"> Scanlines (CRT)</label>
+        <label class="row"><input type="checkbox" id="c-sde" checked> Screen-door gaps</label>
+        <label class="row"><input type="checkbox" id="c-scan"> Scanlines (CRT beam)</label>
+        <label class="row"><input type="checkbox" id="c-loupe" checked> Loupe (8&times; magnifier)</label>
+        <label class="row"><input type="checkbox" id="c-cmp"> Compare all three in loupe</label>
       </div>
       <div class="grp">
         <div class="grp-title">Optics</div>
@@ -103,28 +114,43 @@
     </div>
   </div>
 
+  <div class="overlay loupe-frame" id="loupe-frame">
+    <div class="loupe-labels" id="loupe-labels"><span>OLED</span></div>
+  </div>
+
   <div class="overlay status">
-    <span class="pill">HMD</span><span>Switch CRT / LCD / OLED to compare panels; raise Pixel size to see the subpixels and screen-door. LCD persistence smears motion; OLED and CRT stay crisp. Drag to turn your head.</span>
+    <span class="pill" id="st-pill">OLED</span><span id="st-text"></span>
   </div>
 
 <script>
 // ===========================================================================
 //  MM806 — HMD Simulator
-//  Renders the scene as a head-mounted display does: two eye cameras offset by
-//  the interpupillary distance (IPD), each drawn to its own render target, then
-//  composited side-by-side through a barrel lens-distortion shader with a round
-//  lens mask. Head pose comes from mouse drag or the phone's orientation sensor.
-//  A pose history lets us apply a DELAYED pose to demonstrate motion-to-photon
-//  latency — the lag between moving your head and the photons updating.
+//  Two eye cameras offset by the IPD, each rendered to its own target, then
+//  composited side by side through a barrel pre-distortion with a round lens
+//  mask. The composite is drawn onto an emulated display PANEL (CRT / LCD /
+//  OLED), then two temporal effects are applied:
+//    response time  - the pixel's finite transition (LCD liquid crystal, CRT
+//                     phosphor decay) -> ghost trails, modelled as a 1st-order
+//                     lag with tau = GtG / 2.2 (10-90 % rise of an exponential)
+//    persistence    - the eye tracks the world (VOR) while each frame is held
+//                     lit for t_on; the image slides across the retina by
+//                     omega * t_on -> box blur along the head-motion direction
+//  Head pose from mouse drag or the phone's orientation sensor; a pose history
+//  applies a DELAYED pose to demonstrate motion-to-photon latency.
+//  All shading is in linear light; sRGB encoding happens once, at present.
 // ===========================================================================
 const $ = (id) => document.getElementById(id);
 const canvas = $('viewport');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const DPR = Math.min(window.devicePixelRatio, 2);
+renderer.setPixelRatio(DPR);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.outputEncoding = THREE.sRGBEncoding;
 
-// ---- scene: a small room with depth cues for stereo + parallax --------------
+const HMD_HZ = 90;                         // emulated panel refresh
+const LOUPE_CSS = () => (window.innerWidth < 600 ? 170 : 300);
+const LOUPE_MARGIN = 18, LOUPE_MAG = 8;
+
+// ---- scene ------------------------------------------------------------------
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a1020);
 scene.fog = new THREE.Fog(0x0a1020, 6, 40);
@@ -136,7 +162,6 @@ const floor = new THREE.Mesh(new THREE.PlaneGeometry(60,60),
 floor.rotation.x = -Math.PI/2; scene.add(floor);
 scene.add(new THREE.GridHelper(60, 60, 0x2a3a4f, 0x1a2430));
 
-// scattered colour blocks + pillars at varying depth so head motion reveals parallax
 const palette = [0x4fd6e0,0xff6b6b,0xffd166,0x8ae06a,0xb39ddb,0xff9f68];
 for (let i=0;i<26;i++){
   const s = 0.4 + Math.random()*1.4;
@@ -146,107 +171,216 @@ for (let i=0;i<26;i++){
   m.position.set(Math.cos(ang)*rad, m.geometry.parameters.height/2, Math.sin(ang)*rad);
   scene.add(m);
 }
-// a reference object straight ahead
 const ahead = new THREE.Mesh(new THREE.TorusKnotGeometry(0.5,0.16,120,16),
   new THREE.MeshStandardMaterial({ color:0x4fd6e0, roughness:0.3, metalness:0.5, emissive:0x0a2a30 }));
 ahead.position.set(0,1.6,-4); scene.add(ahead);
+// fine-detail test target: white bars + text-like strokes to show resolution & SDE
+const chartTex = (()=>{ const c=document.createElement('canvas'); c.width=512; c.height=256; const g=c.getContext('2d');
+  g.fillStyle='#0b0f16'; g.fillRect(0,0,512,256);
+  for(let i=0;i<16;i++){ g.fillStyle='#e8eef6'; g.fillRect(16+i*(4+i), 20, 2+i*0.5, 90); }
+  g.fillStyle='#e8eef6'; g.font='bold 54px sans-serif'; g.fillText('MM806 HMD', 24, 190);
+  g.fillStyle='#ff4d4d'; g.fillRect(24,210,140,30); g.fillStyle='#3dff6e'; g.fillRect(186,210,140,30); g.fillStyle='#4d7dff'; g.fillRect(348,210,140,30);
+  const t=new THREE.CanvasTexture(c); t.anisotropy=8; return t; })();
+const chart = new THREE.Mesh(new THREE.PlaneGeometry(2.0,1.0), new THREE.MeshBasicMaterial({ map:chartTex }));
+chart.position.set(1.9,1.7,-3.3); chart.rotation.y=-0.35; scene.add(chart);
 
-// ---- the head rig: two eye cameras offset by IPD ---------------------------
+// ---- head rig ---------------------------------------------------------------
 const head = new THREE.Group(); head.position.set(0,1.6,0); scene.add(head);
 const camL = new THREE.PerspectiveCamera(92, 1, 0.05, 200);
 const camR = new THREE.PerspectiveCamera(92, 1, 0.05, 200);
 head.add(camL); head.add(camR);
 
-// ---- per-eye render targets + the lens-distortion composite ----------------
-function makeRT(){ return new THREE.WebGLRenderTarget(2,2,{ minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter }); }
-const rtL = makeRT(), rtR = makeRT();          // per-eye scene renders
-const frameRT = makeRT();                       // stereo + lens + display-panel composite
-const histA = makeRT(), histB = makeRT();       // ping-pong persistence (retinal smear) buffers
+// ---- render targets (linear; half-float for the panel/temporal chain) -------
+function makeRT(hdr){ return new THREE.WebGLRenderTarget(2,2,{ minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter,
+  type: hdr ? THREE.HalfFloatType : THREE.UnsignedByteType, depthBuffer:!hdr }); }
+const rtL = makeRT(true), rtR = makeRT(true);
+const frameRT = makeRT(true);
+const histA = makeRT(true), histB = makeRT(true);
 let histRead = histA, histWrite = histB;
 const quadScene = new THREE.Scene();
 const quadCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const VS = "varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }";
 
-// --- pass 1: stereo + barrel lens + display-panel emulation (CRT/LCD/OLED) ---
+// --- pass 1: stereo + barrel lens + physical panel emulation -----------------
+//  Every panel pixel shows ONE sample of the image (taken at its centre, or at
+//  each subpixel centre for PenTile, which needs subpixel rendering). Emitter
+//  masks are area-normalised so a flat field keeps its mean luminance; masks
+//  are analytically anti-aliased so small pitches do not moire.
 const distMat = new THREE.ShaderMaterial({
   depthTest:false, depthWrite:false,
   uniforms:{ tL:{value:rtL.texture}, tR:{value:rtR.texture},
-             k1:{value:0.22}, k2:{value:0.10}, mask:{value:1.0}, lens:{value:1.0},
-             uDisplay:{value:2}, uPix:{value:5.0}, uSub:{value:1.0}, uSDE:{value:1.0}, uScan:{value:0.0} },
-  vertexShader: "varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }",
+             k1:{value:0.22}, k2:{value:0.11}, mask:{value:1.0}, lens:{value:1.0},
+             uDisplay:{value:2}, uPix:{value:5.0}, uSub:{value:1.0}, uSDE:{value:1.0}, uScan:{value:0.0},
+             uRes:{value:new THREE.Vector2(1,1)},
+             uLoupe:{value:1.0}, uCmp:{value:0.0}, uLoupeRect:{value:new THREE.Vector4()}, uLoupeSrc:{value:new THREE.Vector2()},
+             uMag:{value:LOUPE_MAG}, uTime:{value:0} },
+  vertexShader: VS,
   fragmentShader: [
     "precision highp float;",
-    "varying vec2 vUv; uniform sampler2D tL; uniform sampler2D tR;",
-    "uniform float k1; uniform float k2; uniform float mask; uniform float lens;",
-    "uniform int uDisplay; uniform float uPix; uniform float uSub; uniform float uSDE; uniform float uScan;",
-    // per-display colour grade: 0=CRT warm/gamma, 1=LCD raised-black/low-contrast, 2=OLED true-black/punchy
-    "vec3 grade(vec3 c){",
-    "  if(uDisplay==0){ c=pow(max(c,0.0),vec3(0.90)); c*=vec3(1.06,1.0,0.90); }",
-    "  else if(uDisplay==1){ c=mix(vec3(0.045,0.05,0.06), c, 0.90); c*=vec3(0.98,1.0,1.03); }",
-    "  else { c=pow(max(c,0.0),vec3(1.10)); float l=dot(c,vec3(0.299,0.587,0.114)); c=mix(vec3(l),c,1.2); }",
-    "  return c; }",
-    // subpixel stripes + screen-door gaps + CRT scanlines, keyed to physical screen pixels
-    "vec3 panel(vec3 c, vec2 frag){",
-    "  vec2 cell = fract(frag/uPix);",
+    "uniform sampler2D tL, tR;",
+    "uniform float k1,k2,mask,lens,uPix,uSub,uSDE,uScan,uLoupe,uCmp,uMag;",
+    "uniform int uDisplay; uniform vec2 uRes, uLoupeSrc; uniform vec4 uLoupeRect;",
+    "float AA;",                                                   // edge softness in cell units
+    "float band(float x,float a,float b){ return smoothstep(a-AA,a+AA,x)*(1.0-smoothstep(b-AA,b+AA,x)); }",
+    "float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }",
+    // image seen through the lens at a panel position (device px); alpha=0 outside the optic
+    "vec4 eyeAt(vec2 f){",
+    "  vec2 v=f/uRes; bool left=v.x<0.5;",
+    "  vec2 e= left ? vec2(v.x*2.0,v.y) : vec2((v.x-0.5)*2.0,v.y);",
+    "  vec2 c=e*2.0-1.0; vec2 uv=e;",
+    "  if(lens>0.5){ float r2=dot(c,c); if(mask>0.5 && r2>1.0) return vec4(0.0);",
+    "    uv=(c*(1.0+k1*r2+k2*r2*r2))*0.5+0.5; }",
+    "  if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0) return vec4(0.0);",
+    "  vec3 px = left ? texture2D(tL,uv).rgb : texture2D(tR,uv).rgb;",
+    "  return vec4(pow(max(px,vec3(0.0)),vec3(2.2)), 1.0); }",            // scene is display-referred: decode to linear light
+    "float eyeRadius(vec2 f){ vec2 v=f/uRes; vec2 e= v.x<0.5 ? vec2(v.x*2.0,v.y) : vec2((v.x-0.5)*2.0,v.y); return length(e*2.0-1.0); }",
+
+    // ---- CRT: aperture-grille phosphor stripes, gaussian electron beam per scanline,
+    //      brightness-dependent beam width (blooming), slight misconvergence, glass halation
+    "vec3 crt(vec2 f){",
+    "  vec2 q=f/uPix; vec2 p=floor(q); vec2 cl=q-p; vec2 ctr=(p+0.5)*uPix;",
+    "  vec3 c=vec3(eyeAt(ctr+vec2(0.30*uPix,0.0)).r, eyeAt(ctr).g, eyeAt(ctr-vec2(0.30*uPix,0.0)).b);",
+    "  vec3 o=c;",
     "  if(uSub>0.5){",
-    "    float sx = cell.x*3.0;",
-    "    vec3 sp = vec3( step(sx,1.0), step(1.0,sx)*step(sx,2.0), step(2.0,sx) );",  // R | G | B
-    "    c = c*sp*3.0; }",
-    "  if(uSDE>0.5){",
-    "    vec2 g = smoothstep(0.0,0.15,cell)*smoothstep(1.0,0.85,cell);",
-    "    float gap = g.x*g.y; float fill = (uDisplay==2)?0.85:0.70;",              // OLED tighter fill
-    "    c *= mix(1.0-fill, 1.0, gap); }",
-    "  if(uDisplay==0 && uScan>0.5){ c *= (0.72 + 0.28*sin(frag.y/uPix*6.2831)); }",
-    "  return c; }",
+    "    float w = uSDE>0.5 ? 0.085 : 0.15;",                     // stripe gaussian width (grille wires = gaps)
+    "    float A = w*1.7725;",                                     // integral of exp(-(x/w)^2)
+    "    vec3 m; for(int i=0;i<3;i++){ float xc=(float(i)+0.5)/3.0; float d=cl.x-xc; float g=exp(-d*d/(w*w+AA*AA*0.5));",
+    "      if(i==0) m.r=g; else if(i==1) m.g=g; else m.b=g; }",
+    "    o = c*m/(A*3.0); }",                                      // each colour owns 1/3 of the pitch
+    "  if(uScan>0.5){",
+    "    vec3 sig = mix(vec3(0.13), vec3(0.30), sqrt(clamp(c,0.0,1.0)));",  // brighter -> fatter beam
+    "    vec3 dy = vec3(cl.y-0.5);",
+    "    o *= exp(-dy*dy/(sig*sig+AA*AA*0.5)) / (sig*1.7725); }",
+    "  vec3 halo=vec3(0.0);",                                      // light scattered in the faceplate glass
+    "  for(int i=0;i<16;i++){ float fi=float(i); float a=fi*2.39996; float r=(1.5+fi*0.35)*uPix;",   // spiral, no rings
+    "    halo+=eyeAt(f+vec2(cos(a),sin(a))*r).rgb; }",
+    "  return o + halo*(0.025/16.0); }",
+
+    // ---- LCD: RGB stripe, black matrix + TFT corner, backlight leakage (~1000:1)
+    "vec3 lcd(vec2 f){",
+    "  vec2 q=f/uPix; vec2 p=floor(q); vec2 cl=q-p;",
+    "  vec4 s=eyeAt((p+0.5)*uPix); if(s.a<0.5) return vec3(0.0);",
+    "  float leak = 0.001 + 0.003*smoothstep(0.55,1.0,eyeRadius(f));",   // contrast + edge bleed
+    "  vec3 c = s.rgb*(1.0-leak) + leak;",                          // leak passes through the open cell
+    "  if(uSub<0.5 && uSDE<0.5) return c;",
+    "  float gx = uSDE>0.5 ? 0.05 : 0.0, gy = uSDE>0.5 ? 0.09 : 0.0;",
+    "  float vy = band(cl.y, gy, 1.0-gy);",
+    "  if(uSub<0.5){ float A=(1.0-2.0*gx*3.0)*(1.0-2.0*gy); return c*band(cl.x,gx*3.0,1.0-gx*3.0)*vy/A; }",
+    "  float sx=cl.x*3.0; float k=floor(sx); float u=sx-k;",
+    "  float ap = band(u, gx*3.0, 1.0-gx*3.0)*vy;",
+    "  float tft = uSDE>0.5 ? band(u,0.12,0.42)*band(cl.y,gy,gy+0.22) : 0.0;",
+    "  ap *= 1.0-tft;",
+    "  float A = ((1.0-6.0*gx)*(1.0-2.0*gy) - (uSDE>0.5 ? 0.30*0.22 : 0.0))/3.0;",
+    "  vec3 sel = k<0.5 ? vec3(1,0,0) : (k<1.5 ? vec3(0,1,0) : vec3(0,0,1));",
+    "  return c*sel*ap/A; }",
+
+    // ---- OLED: diamond PenTile (R/B checkerboard at pixel centres, G at corners),
+    //      self-emissive true black, per-subpixel mura most visible near black
+    "vec3 oled(vec2 f){",
+    "  vec2 q=f/uPix; vec2 p=floor(q); vec2 cl=q-p;",
+    "  if(uSub<0.5){ vec4 s=eyeAt((p+0.5)*uPix);",
+    "    if(uSDE<0.5) return s.rgb;",
+    "    float A=0.70*0.70; return s.rgb*band(cl.x,0.15,0.85)*band(cl.y,0.15,0.85)/A; }",
+    "  bool isR = mod(p.x+p.y,2.0)<0.5;",
+    "  float hd = uSDE>0.5 ? 0.36 : 0.50;",                       // diamond half-diagonal
+    "  float gr = uSDE>0.5 ? 0.203 : 0.282;",                     // green radius: equal mean area per colour
+    "  float Arb = hd*hd, Ag = 3.14159*gr*gr;",
+    "  vec4 sc = eyeAt((p+0.5)*uPix);",
+    "  float dd = abs(cl.x-0.5)+abs(cl.y-0.5);",
+    "  float md = 1.0-smoothstep(hd-AA*1.4,hd+AA*1.4,dd);",
+    "  vec2 cn = floor(q+0.5);",
+    "  vec4 sg = eyeAt(cn*uPix);",
+    "  float mg = 1.0-smoothstep(gr-AA,gr+AA,length(q-cn));",
+    "  float muraRB = 1.0+(hash(p)-0.5)*0.10, muraG = 1.0+(hash(cn+17.0)-0.5)*0.10;",
+    "  vec3 o = vec3(0.0);",
+    "  float rb = md/Arb;",
+    "  if(isR) o.r = sc.r*rb*muraRB; else o.b = sc.b*rb*muraRB;",
+    "  o.g = sg.g*mg/Ag*muraG;",
+    "  return o; }",
+
+    "vec3 panelColor(int d, vec2 f){ if(d==0) return crt(f); if(d==1) return lcd(f); return oled(f); }",
+
     "void main(){",
-    "  bool left = vUv.x < 0.5;",
-    "  vec2 e = left ? vec2(vUv.x*2.0, vUv.y) : vec2((vUv.x-0.5)*2.0, vUv.y);",
-    "  vec2 c = e*2.0 - 1.0; vec2 uv;",
-    "  if(lens > 0.5){",
-    "    float r2 = dot(c,c); float f = 1.0 + k1*r2 + k2*r2*r2; uv = (c*f)*0.5 + 0.5;",
-    "    if(mask > 0.5 && dot(c,c) > 1.0){ gl_FragColor = vec4(0.0,0.0,0.0,1.0); return; }",
-    "  } else { uv = e; }",
-    "  if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }",
-    "  vec3 col = left ? texture2D(tL, uv).rgb : texture2D(tR, uv).rgb;",
-    "  col = grade(col);",
-    "  col = panel(col, gl_FragCoord.xy);",
-    "  gl_FragColor = vec4(col, 1.0);",
+    "  vec2 f=gl_FragCoord.xy; int disp=uDisplay; float scale=1.0; float tag=1.0;",
+    "  if(uLoupe>0.5){",
+    "    vec2 lp=f-uLoupeRect.xy;",
+    "    if(lp.x>=0.0 && lp.y>=0.0 && lp.x<uLoupeRect.z && lp.y<uLoupeRect.w){",
+    "      tag=0.0; scale=uMag;",
+    "      if(uCmp>0.5){ float wcol=uLoupeRect.z/3.0; float k=floor(lp.x/wcol);",
+    "        disp = k<0.5 ? 0 : (k<1.5 ? 1 : 2);",
+    "        float lx=lp.x-k*wcol;",
+    "        if(lx<2.0 && k>0.5){ gl_FragColor=vec4(0.10,0.13,0.17,0.0); return; }",
+    "        f = uLoupeSrc + (vec2(lx,lp.y)-vec2(wcol,uLoupeRect.w)*0.5)/uMag;",
+    "      } else f = uLoupeSrc + (lp-uLoupeRect.zw*0.5)/uMag;",
+    "    } else {",                                                 // outline of the magnified region
+    "      vec2 h=uLoupeRect.zw*0.5/uMag; if(uCmp>0.5) h.x/=3.0; vec2 d=abs(f-uLoupeSrc)-h;",
+    "      if(max(d.x,d.y)<1.0 && max(d.x,d.y)>-1.0){ gl_FragColor=vec4(0.20,0.62,0.66,0.0); return; } }",
+    "  }",
+    "  AA = clamp(0.6/(uPix*scale), 0.004, 0.35);",
+    "  gl_FragColor = vec4(panelColor(disp,f), tag);",            // alpha 0 = loupe: skip temporal passes
     "}"
   ].join("\n"),
 });
 
-// --- pass 2: persistence = temporal accumulation (LCD smear vs OLED clarity) --
-const persistMat = new THREE.ShaderMaterial({
+// --- pass 2: response time (pixel transition lag) ---------------------------
+const respMat = new THREE.ShaderMaterial({
   depthTest:false, depthWrite:false,
-  uniforms:{ curr:{value:frameRT.texture}, hist:{value:histRead.texture}, alpha:{value:0.92} },
-  vertexShader: "varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }",
+  uniforms:{ curr:{value:frameRT.texture}, hist:{value:histRead.texture}, alpha:{value:1.0} },
+  vertexShader: VS,
   fragmentShader: [
     "precision highp float; varying vec2 vUv;",
-    "uniform sampler2D curr; uniform sampler2D hist; uniform float alpha;",
-    "void main(){ vec3 c=texture2D(curr,vUv).rgb; vec3 h=texture2D(hist,vUv).rgb;",
-    "  gl_FragColor = vec4(mix(h, c, alpha), 1.0); }"      // low alpha keeps more history -> more smear
+    "uniform sampler2D curr, hist; uniform float alpha;",
+    "void main(){ vec4 c=texture2D(curr,vUv); vec3 h=texture2D(hist,vUv).rgb;",
+    "  gl_FragColor = vec4(c.a>0.5 ? mix(h,c.rgb,alpha) : c.rgb, c.a); }"
   ].join("\n"),
 });
 
-// --- pass 3: copy the accumulation buffer to the screen ---
-const copyMat = new THREE.ShaderMaterial({
-  depthTest:false, depthWrite:false, uniforms:{ tex:{value:histWrite.texture} },
-  vertexShader: "varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }",
-  fragmentShader: "precision highp float; varying vec2 vUv; uniform sampler2D tex; void main(){ gl_FragColor=vec4(texture2D(tex,vUv).rgb,1.0); }",
+// --- pass 3: persistence smear on the retina, then sRGB encode to screen -----
+const presentMat = new THREE.ShaderMaterial({
+  depthTest:false, depthWrite:false,
+  uniforms:{ tex:{value:histWrite.texture}, uRes:{value:new THREE.Vector2(1,1)}, uSmear:{value:new THREE.Vector2()} },
+  vertexShader: VS,
+  fragmentShader: [
+    "precision highp float; varying vec2 vUv;",
+    "uniform sampler2D tex; uniform vec2 uRes, uSmear;",
+    "const int M=24;",
+    "vec3 toSRGB(vec3 c){ c=clamp(c,0.0,1.0); return mix(1.055*pow(c,vec3(0.41666))-0.055, c*12.92, step(c,vec3(0.0031308))); }",
+    "void main(){ vec4 c0=texture2D(tex,vUv); vec3 col=c0.rgb;",
+    "  if(c0.a>0.5 && dot(uSmear,uSmear)>0.04){",
+    "    vec3 acc=vec3(0.0); float w=0.0;",
+    "    for(int i=0;i<M;i++){ float t=(float(i)+0.5)/float(M)-0.5;",   // box = constant emission while lit
+    "      vec4 s=texture2D(tex, vUv+uSmear*t/uRes); acc+=s.rgb*s.a; w+=s.a; }",
+    "    col = w>0.0 ? acc/w : c0.rgb; }",
+    "  gl_FragColor=vec4(toSRGB(col),1.0); }"
+  ].join("\n"),
 });
 
 const quadMesh = new THREE.Mesh(new THREE.PlaneGeometry(2,2), distMat);
 quadScene.add(quadMesh);
 function pass(mat, target){ quadMesh.material = mat; renderer.setRenderTarget(target); renderer.render(quadScene, quadCam); }
 
-// ---- sizing ----------------------------------------------------------------
+// ---- sizing (everything in DEVICE pixels so the panel grid is pixel-exact) --
+const _db = new THREE.Vector2();
+let loupeSrcCss = null;   // null = centre of left eye
+function updateLoupeRect(){
+  const s=LOUPE_CSS(), W=window.innerWidth;
+  distMat.uniforms.uLoupeRect.value.set((W-LOUPE_MARGIN-s)*DPR, LOUPE_MARGIN*DPR, s*DPR, s*DPR);
+  const fr=$('loupe-frame'); fr.style.width=s+'px'; fr.style.height=s+'px';
+  const H=window.innerHeight;
+  const src = loupeSrcCss || { x: W*0.25, y: H*0.5 };
+  distMat.uniforms.uLoupeSrc.value.set(src.x*DPR, (H-src.y)*DPR);
+}
 function resize(){
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h);
-  const ew = Math.max(2, Math.floor(w/2));
-  rtL.setSize(ew, h); rtR.setSize(ew, h);
-  frameRT.setSize(w, h); histA.setSize(w, h); histB.setSize(w, h);
-  camL.aspect = ew/h; camR.aspect = ew/h;
+  renderer.getDrawingBufferSize(_db);
+  const ew = Math.max(2, Math.floor(_db.x/2));
+  rtL.setSize(ew, _db.y); rtR.setSize(ew, _db.y);
+  frameRT.setSize(_db.x, _db.y); histA.setSize(_db.x, _db.y); histB.setSize(_db.x, _db.y);
+  distMat.uniforms.uRes.value.copy(_db); presentMat.uniforms.uRes.value.copy(_db);
+  camL.aspect = ew/_db.y; camR.aspect = ew/_db.y;
   camL.updateProjectionMatrix(); camR.updateProjectionMatrix();
+  updateLoupeRect();
 }
 window.addEventListener('resize', resize); resize();
 
@@ -255,27 +389,29 @@ window.addEventListener('resize', resize); resize();
 // ===========================================================================
 let yaw=0, pitch=0, useDevice=false, latency=0;
 let dragging=false, lastX=0, lastY=0;
-const deviceRaw = new THREE.Quaternion();       // raw sensor orientation
-const deviceOffset = new THREE.Quaternion();    // recenter offset
+const deviceRaw = new THREE.Quaternion();
+const deviceOffset = new THREE.Quaternion();
 const _euler = new THREE.Euler(0,0,0,'YXZ');
 const trueQuat = new THREE.Quaternion();
-const poseHist = [];                            // { t, q } ring buffer for latency
+const poseHist = [];
 
 canvas.addEventListener('pointerdown', e => { if(!useDevice){ dragging=true; lastX=e.clientX; lastY=e.clientY; } });
 canvas.addEventListener('pointerup',   () => dragging=false);
 canvas.addEventListener('pointerleave',() => dragging=false);
 canvas.addEventListener('pointermove', e => {
-  if(!dragging || useDevice) return;
+  if(!dragging || useDevice){                       // hover moves the loupe
+    if(e.pointerType==='mouse'){ loupeSrcCss={x:e.clientX,y:e.clientY}; updateLoupeRect(); }
+    return;
+  }
   yaw   -= (e.clientX - lastX) * 0.005;
   pitch -= (e.clientY - lastY) * 0.005;
   pitch = Math.max(-1.4, Math.min(1.4, pitch));
   lastX=e.clientX; lastY=e.clientY;
 });
 
-// deviceorientation -> quaternion (standard WebVR/three formula)
 const _zee = new THREE.Vector3(0,0,1);
 const _q0 = new THREE.Quaternion();
-const _q1 = new THREE.Quaternion(-Math.sqrt(0.5),0,0,Math.sqrt(0.5)); // -PI/2 about x
+const _q1 = new THREE.Quaternion(-Math.sqrt(0.5),0,0,Math.sqrt(0.5));
 function setFromDevice(alpha,beta,gamma,orient){
   _euler.set(beta, alpha, -gamma, 'YXZ');
   deviceRaw.setFromEuler(_euler);
@@ -288,7 +424,6 @@ function onDeviceOrient(ev){
   const orient = (screen.orientation && screen.orientation.angle ? screen.orientation.angle : (window.orientation||0)) * D;
   setFromDevice(ev.alpha*D, ev.beta*D, ev.gamma*D, orient);
 }
-
 $('b-device').addEventListener('click', () => {
   const enable = () => {
     window.addEventListener('deviceorientation', onDeviceOrient, true);
@@ -306,19 +441,33 @@ $('b-recenter').addEventListener('click', () => {
 
 // ---- controls --------------------------------------------------------------
 $('s-ipd').addEventListener('input', e => { const v=+e.target.value; $('v-ipd').textContent=v+' mm'; $('h-ipd').textContent=v; });
-$('s-fov').addEventListener('input', e => { const v=+e.target.value; $('v-fov').textContent=v+'\u00b0'; $('h-fov').textContent=v; camL.fov=v; camR.fov=v; camL.updateProjectionMatrix(); camR.updateProjectionMatrix(); });
+$('s-fov').addEventListener('input', e => { const v=+e.target.value; $('v-fov').textContent=v+'°'; $('h-fov').textContent=v; camL.fov=v; camR.fov=v; camL.updateProjectionMatrix(); camR.updateProjectionMatrix(); });
 $('s-k1').addEventListener('input', e => { const v=+e.target.value; $('v-k1').textContent=v.toFixed(2); distMat.uniforms.k1.value=v; distMat.uniforms.k2.value=v*0.5; });
 $('s-lat').addEventListener('input', e => { latency=+e.target.value; $('v-lat').textContent=latency+' ms'; $('h-lat').textContent=latency; });
 $('c-lens').addEventListener('change', e => { distMat.uniforms.lens.value = e.target.checked?1.0:0.0; distMat.uniforms.mask.value = e.target.checked?1.0:0.0; });
-$('c-stereo').addEventListener('change', ()=>{});   // read live in loop
 
-// ---- display technology (CRT / LCD / OLED) ---------------------------------
+// ---- display technology ------------------------------------------------------
 const DISP = { 0:'CRT', 1:'LCD', 2:'OLED' };
-// characteristic persistence: CRT impulse (crisp), LCD sample-and-hold (smears), OLED low-persistence
-const PRESET = { 0:{persist:3, scan:1}, 1:{persist:55, scan:0}, 2:{persist:8, scan:0} };
+// persistence = % of the 90 Hz frame the pixel emits; response = 10-90 % transition
+const PRESET = {
+  0:{ persist:12, resp:1.0, scan:1 },   // phosphor flashes ~1-2 ms then decays
+  1:{ persist:100, resp:6.0, scan:0 },  // sample-and-hold, liquid-crystal GtG of several ms
+  2:{ persist:18, resp:0.1, scan:0 },   // VR low-persistence mode (~2 ms), near-instant switching
+};
+const NOTES = {
+  0:'Aperture-grille phosphor stripes lit by a gaussian electron beam; bright lines bloom fatter, light scatters in the faceplate glass, and convergence is never perfect. Impulse-type: a short flash per frame, so little smear.',
+  1:'RGB stripe behind a black matrix (with the TFT in each cell corner). The backlight leaks through "black" (~1000:1), and the liquid crystal takes milliseconds to switch: ghost trails plus full sample-and-hold smear. VR LCDs (e.g. Quest 2/3) strobe the backlight: set persistence to about 20% to emulate.',
+  2:'Diamond PenTile: green at every pixel corner, red and blue alternating at pixel centres (two-thirds of the subpixels of RGB stripe). Self-emissive, so black is black, but small emitters widen the screen-door and per-subpixel mura shows in dark greys. Switching is near-instant; VR panels add black-frame insertion for low persistence.',
+};
 function setPersist(p){
-  persistMat.uniforms.alpha.value = 1.0 - p/100.0;   // alpha = new-frame weight
-  $('s-per').value = p; $('v-per').textContent = p+'%'; $('h-per').textContent = p;
+  $('s-per').value=p; $('v-per').textContent=p+'%'; $('h-per').textContent=p;
+  $('h-ton').textContent=(p/100*1000/HMD_HZ).toFixed(1);
+}
+function setResp(r){
+  // 10-90 % rise of a 1st-order lag = 2.2 tau; per-frame weight at HMD_HZ
+  const tau=Math.max(r,1e-3)/2.2, dt=1000/HMD_HZ;
+  respMat.uniforms.alpha.value = r<=0 ? 1.0 : 1.0-Math.exp(-dt/tau);
+  $('s-resp').value=r; $('v-resp').textContent=r.toFixed(1)+' ms'; $('h-resp').textContent=r.toFixed(1);
 }
 function selectDisplay(t){
   distMat.uniforms.uDisplay.value = t;
@@ -326,17 +475,30 @@ function selectDisplay(t){
   $('h-disp').textContent = DISP[t];
   const p = PRESET[t];
   distMat.uniforms.uScan.value = p.scan; $('c-scan').checked = !!p.scan;
-  setPersist(p.persist);
+  setPersist(p.persist); setResp(p.resp);
+  $('st-pill').textContent=DISP[t]; $('st-text').textContent=NOTES[t];
+  updateLoupeLabels();
+}
+function updateLoupeLabels(){
+  const on=$('c-loupe').checked, cmp=$('c-cmp').checked;
+  $('loupe-frame').style.display = on ? '' : 'none';
+  $('loupe-labels').innerHTML = cmp ? '<span>CRT</span><span>LCD</span><span>OLED</span>'
+                                    : '<span>'+DISP[distMat.uniforms.uDisplay.value]+'</span>';
+  $('loupe-labels').classList.toggle('cmp', cmp);
 }
 $('d-crt').addEventListener('click', ()=>selectDisplay(0));
 $('d-lcd').addEventListener('click', ()=>selectDisplay(1));
 $('d-oled').addEventListener('click', ()=>selectDisplay(2));
-$('s-pix').addEventListener('input', e => { const v=+e.target.value; distMat.uniforms.uPix.value=v; $('v-pix').textContent=v+' px'; $('h-pix').textContent=v; });
+$('s-pix').addEventListener('input', e => { const v=+e.target.value; distMat.uniforms.uPix.value=v*DPR; $('v-pix').textContent=v+' px'; $('h-pix').textContent=v; });
 $('s-per').addEventListener('input', e => setPersist(+e.target.value));
+$('s-resp').addEventListener('input', e => setResp(+e.target.value));
 $('c-sub').addEventListener('change', e => { distMat.uniforms.uSub.value = e.target.checked?1.0:0.0; });
 $('c-sde').addEventListener('change', e => { distMat.uniforms.uSDE.value = e.target.checked?1.0:0.0; });
 $('c-scan').addEventListener('change', e => { distMat.uniforms.uScan.value = e.target.checked?1.0:0.0; });
-selectDisplay(2);   // start on OLED
+$('c-loupe').addEventListener('change', e => { distMat.uniforms.uLoupe.value = e.target.checked?1.0:0.0; updateLoupeLabels(); });
+$('c-cmp').addEventListener('change', e => { distMat.uniforms.uCmp.value = e.target.checked?1.0:0.0; updateLoupeLabels(); });
+distMat.uniforms.uPix.value = 5*DPR;
+selectDisplay(2);
 
 $('panel-toggle').addEventListener('click', () => {
   const b=$('panel-body'); const open=b.style.display!=='none';
@@ -345,28 +507,43 @@ $('panel-toggle').addEventListener('click', () => {
 });
 
 // ===========================================================================
-//  Render loop: update pose (delayed), place eyes, render both, composite
+//  Render loop
 // ===========================================================================
 function currentPose(out){
   if(useDevice){ out.copy(deviceOffset).multiply(deviceRaw); }
   else { _euler.set(pitch, yaw, 0, 'YXZ'); out.setFromEuler(_euler); }
   return out;
 }
+const prevQ = new THREE.Quaternion(), dq = new THREE.Quaternion();
+const omega = new THREE.Vector2();          // head angular velocity (rad/s): x=yaw, y=pitch
+let lastT = performance.now();
+
 renderer.setAnimationLoop(() => {
   const now = performance.now();
+  const dt = Math.max(1e-3, (now-lastT)/1000); lastT = now;
   currentPose(trueQuat);
   poseHist.push({ t:now, q:trueQuat.clone() });
-  if(poseHist.length > 180) poseHist.shift();
+  if(poseHist.length > 240) poseHist.shift();
 
-  // apply the pose from (now - latency) -> motion-to-photon delay
   let applied = trueQuat;
   const target = now - latency;
   for(let i=poseHist.length-1;i>=0;i--){ if(poseHist[i].t <= target){ applied = poseHist[i].q; break; } }
   head.quaternion.copy(applied);
 
+  // angular velocity in the head frame -> retinal slip during the lit interval
+  dq.copy(prevQ).invert().multiply(head.quaternion); if(dq.w<0){ dq.x=-dq.x; dq.y=-dq.y; dq.z=-dq.z; dq.w=-dq.w; }
+  const ang = 2*Math.acos(Math.min(1,dq.w)), sn = Math.sqrt(Math.max(1e-12,1-dq.w*dq.w));
+  const wy = ang>1e-6 ? dq.y/sn*ang/dt : 0, wx = ang>1e-6 ? dq.x/sn*ang/dt : 0;
+  omega.x += (wy-omega.x)*0.35; omega.y += (wx-omega.y)*0.35;
+  prevQ.copy(head.quaternion);
+  const tOn = (+$('s-per').value)/100 / HMD_HZ;
+  const pxPerRad = _db.y / (2*Math.tan(camL.fov*Math.PI/360));
+  const smear = presentMat.uniforms.uSmear.value.set(omega.x*tOn*pxPerRad, omega.y*tOn*pxPerRad);
+  if(smear.length()>120*DPR) smear.setLength(120*DPR);
+  $('h-smear').textContent=(smear.length()/DPR).toFixed(1);
+
   ahead.rotation.y += 0.01; ahead.rotation.x += 0.006;
 
-  // eye offset from IPD (metres); zero when stereo is off
   const ipd = (+$('s-ipd').value) / 1000.0;
   const half = $('c-stereo').checked ? ipd*0.5 : 0.0;
   camL.position.set(-half, 0, 0);
@@ -375,12 +552,12 @@ renderer.setAnimationLoop(() => {
   renderer.setRenderTarget(rtL); renderer.render(scene, camL);
   renderer.setRenderTarget(rtR); renderer.render(scene, camR);
 
-  pass(distMat, frameRT);                              // stereo + lens + display panel
-  persistMat.uniforms.curr.value = frameRT.texture;
-  persistMat.uniforms.hist.value = histRead.texture;
-  pass(persistMat, histWrite);                         // accumulate with previous frame
-  copyMat.uniforms.tex.value = histWrite.texture;
-  pass(copyMat, null);                                 // present
+  pass(distMat, frameRT);
+  respMat.uniforms.curr.value = frameRT.texture;
+  respMat.uniforms.hist.value = histRead.texture;
+  pass(respMat, histWrite);
+  presentMat.uniforms.tex.value = histWrite.texture;
+  pass(presentMat, null);
   const tmp = histRead; histRead = histWrite; histWrite = tmp;
 });
 </script>
