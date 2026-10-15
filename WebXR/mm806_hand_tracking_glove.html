@@ -96,6 +96,8 @@
         <div class="seg" id="dofs"><button data-v="5">5 sensors</button><button data-v="10" class="active">10 sensors</button><button data-v="20">20 sensors</button></div>
         <label>Calibration gain error (1&sigma;) <span class="val" id="v-cal">8%</span><input type="range" id="s-cal" min="0" max="25" step="1" value="8"></label>
         <label>Sensor drift <span class="val" id="v-dr">6&deg;/min</span><input type="range" id="s-dr" min="0" max="40" step="1" value="6"></label>
+        <label>Sensor jitter (1&sigma;) <span class="val" id="v-gjit">0.8&deg;</span><input type="range" id="s-gjit" min="0" max="6" step="0.1" value="0.8"></label>
+        <label id="lbl-wjit">Wrist tracker jitter (1&sigma;) <span class="val" id="v-wjit">0.7 mm</span><input type="range" id="s-wjit" min="0" max="10" step="0.1" value="0.7"></label>
         <div class="seg" id="wrists"><button data-v="puck" class="active">Wrist: tracker puck</button><button data-v="headset">Wrist: headset</button><button data-v="imu">Wrist: IMU only</button></div>
         <div class="seg" id="haps"><button data-v="none">No haptics</button><button data-v="vibro">Vibrotactile</button><button data-v="force" class="active">Force feedback</button></div>
         <button class="btn" id="b-cal">Recalibrate glove</button>
@@ -212,7 +214,7 @@ if(typeof module!=='undefined') module.exports={JOINTS,FBASE,v3,REST_GEOM,REST_A
 // ===========================================================================
 const $=(id)=>document.getElementById(id);
 const DEG=Math.PI/180;
-const S={ gest:0, auto:true, speed:1, fov:100, lat:45, jit:2.5, occ:'prior', dof:10, cal:8, drift:6, wrist:'puck', hap:'force', truth:true, frusta:true, live:false };
+const S={ gest:0, auto:true, speed:1, fov:100, lat:45, jit:2.5, occ:'prior', dof:10, cal:8, drift:6, gjit:0.8, wjit:0.7, wrist:'puck', hap:'force', truth:true, frusta:true, live:false };
 const BALL={ c:[0.04,-0.33,-0.40], r:0.045 };
 const gauss=()=>{ let u=0,v=0; while(!u) u=Math.random(); while(!v) v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); };
 
@@ -353,10 +355,12 @@ class Glove{
   recal(scale){ this.gain=Array.from({length:20},()=>gauss()*S.cal/100*scale); this.dRate=Array.from({length:20},()=>gauss()); this.t0=simT; this.imuErr=[0,0,0]; this.imuVel=[0,0,0]; }
   step(t, dt, tr, ball){
     const L=sensorList(), ang=cloneAng(REST_ANG); ang.fingers.forEach((f,i)=>{ f[0]=REST_ANG.fingers[i][0]; });
-    this.meas=L.map((s,i)=>{ const tv=s.get(tr.ang); const mv=tv*(1+this.gain[i])+this.dRate[i]*S.drift*DEG/60*(t-this.t0)+0.8*DEG*gauss(); s.set(ang,mv); return {n:s.n,t:tv,m:mv}; });
+    const an=Math.exp(-dt/0.03), bn=Math.sqrt(1-an*an); if(!this.sn) this.sn=new Array(20).fill(0);
+    this.meas=L.map((s,i)=>{ this.sn[i]=an*this.sn[i]+bn*S.gjit*DEG*gauss(); const tv=s.get(tr.ang); const mv=tv*(1+this.gain[i])+this.dRate[i]*S.drift*DEG/60*(t-this.t0)+this.sn[i]; s.set(ang,mv); return {n:s.n,t:tv,m:mv}; });
     // wrist source
     let f=tr.frame; this.wristState='ok';
-    if(S.wrist==='puck'){ const a=Math.exp(-dt/0.05), b=Math.sqrt(1-a*a); this.n=this.n.map(v=>a*v+b*0.0015*gauss()); f={...f, o:v3.add(f.o,this.n)}; }
+    if(S.wrist==='puck'){ const a=Math.exp(-dt/0.05), b=Math.sqrt(1-a*a); if(!this.rn) this.rn=[0,0,0];
+      this.n=this.n.map(v=>a*v+b*S.wjit/1000*gauss()); this.rn=this.rn.map(v=>a*v+b*(S.wjit*0.4*DEG)*gauss()); f=rotFrame(f,this.rn); f={...f, o:v3.add(f.o,this.n)}; }
     else if(S.wrist==='imu'){ this.imuVel=this.imuVel.map(v=>v+0.004*gauss()*Math.sqrt(dt)); this.imuErr=this.imuErr.map((v,i)=>v+this.imuVel[i]*dt); f={...f, o:v3.add(f.o,this.imuErr)};
       this.wristState='drift '+(v3.len(this.imuErr)*1000).toFixed(0)+' mm'; }
     else { this.wristOpt.step(t,dt,tr,ball); if(this.wristOpt.state==='tracked'){ this.lastWrist=analyze(this.wristOpt.P).frame; }
@@ -539,11 +543,12 @@ function updateGestUI(){ setBlend(); document.querySelectorAll('#gests button').
 GEST.forEach((g,i)=>{ const b=document.createElement('button'); b.textContent=g.name; b.onclick=()=>{ prevEnd=gTime; prevGest=S.gest; S.gest=i; gTime=0; updateGestUI(); }; $('gests').appendChild(b); });
 function applyUI(){
   $('v-spd').textContent=S.speed.toFixed(2)+'×'; $('v-fov').textContent=S.fov+'°'; $('v-lat').textContent=S.lat+' ms'; $('v-jit').textContent=S.jit.toFixed(1)+' mm';
-  $('v-cal').textContent=S.cal+'%'; $('v-dr').textContent=S.drift+'°/min';
+  $('v-cal').textContent=S.cal+'%'; $('v-dr').textContent=S.drift+'°/min'; $('v-gjit').textContent=S.gjit.toFixed(1)+'°'; $('v-wjit').textContent=S.wjit.toFixed(1)+' mm';
+  $('lbl-wjit').style.display=S.wrist==='puck'?'':'none';
   for(const [id,key] of [['occ','occ'],['dofs','dof'],['wrists','wrist'],['haps','hap']]) document.querySelectorAll('#'+id+' button').forEach(b=>b.classList.toggle('active',String(S[key])===b.dataset.v));
   frustumLines(rigA); frustumLines(rigB); placeIrCam(); drawVRPanel(); }
 const bindR=(id,key,f=v=>v)=>{ $(id).oninput=e=>{ S[key]=f(+e.target.value); applyUI(); }; };
-bindR('s-spd','speed'); bindR('s-fov','fov'); bindR('s-lat','lat'); bindR('s-jit','jit'); bindR('s-cal','cal'); bindR('s-dr','drift');
+bindR('s-spd','speed'); bindR('s-fov','fov'); bindR('s-lat','lat'); bindR('s-jit','jit'); bindR('s-cal','cal'); bindR('s-dr','drift'); bindR('s-gjit','gjit'); bindR('s-wjit','wjit');
 $('s-cal').onchange=()=>glove.recal(1);
 $('c-auto').onchange=e=>{ S.auto=e.target.checked; };
 $('c-truth').onchange=e=>{ S.truth=e.target.checked; };
@@ -567,6 +572,7 @@ function vrButtons(){ const b=[]; let y=330; const X0=40,W=944,G=16;
   row([{label:'latency −',act:()=>{S.lat=Math.max(0,S.lat-15); applyUI();}},{label:'cam '+S.lat+' ms',act:()=>{}},{label:'latency +',act:()=>{S.lat=Math.min(150,S.lat+15); applyUI();}}]);
   row([{label:'FOV −',act:()=>{S.fov=Math.max(60,S.fov-10); applyUI();}},{label:'FOV '+S.fov+'°',act:()=>{}},{label:'FOV +',act:()=>{S.fov=Math.min(150,S.fov+10); applyUI();}}]);
   row([{label:S.dof+' sensors',act:()=>{ S.dof=cyc([5,10,20],S.dof); glove.recal(1); applyUI(); }},{label:'wrist: '+S.wrist,act:()=>{ S.wrist=cyc(['puck','headset','imu'],S.wrist); glove.imuErr=[0,0,0]; glove.imuVel=[0,0,0]; applyUI(); }},{label:S.hap,act:()=>{ S.hap=cyc(['none','vibro','force'],S.hap); applyUI(); }}]);
+  row([{label:'glove jitter −',act:()=>{S.gjit=Math.max(0,+(S.gjit-0.5).toFixed(1)); S.wjit=Math.max(0,+(S.wjit-0.5).toFixed(1)); applyUI();}},{label:'glove '+S.gjit.toFixed(1)+'° / '+S.wjit.toFixed(1)+' mm',act:()=>{}},{label:'glove jitter +',act:()=>{S.gjit=Math.min(6,+(S.gjit+0.5).toFixed(1)); S.wjit=Math.min(10,+(S.wjit+0.5).toFixed(1)); applyUI();}}]);
   row([{label:'Recalibrate',act:()=>glove.recal(0.3)},{label:'Truth ghost',on:S.truth,act:()=>{S.truth=!S.truth; drawVRPanel();}},{label:'Exit VR',act:()=>{ const s=renderer.xr.getSession(); s&&s.end(); }}]);
   return b; }
 function wrapText(g,text,x,y,maxW,lh,maxLines){ const words=text.split(' '); let line='',n=0; for(const w of words){ const t=line?line+' '+w:w; if(g.measureText(t).width>maxW){ g.fillText(line,x,y); y+=lh; line=w; if(++n>=maxLines-1) break; } else line=t; } if(line) g.fillText(line,x,y); }
