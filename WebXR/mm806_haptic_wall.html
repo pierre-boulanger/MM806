@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haptic Wall Rendering — MM806</title>
+<style>
+  :root{--bg:#06080d;--panel:#131922;--line:#243040;--ink:#d3dce6;--dim:#6f7d8e;--cy:#4fd6e0;--spring:#ffd166;--damp:#7aa2ff;--force:#ff6b7a;--ok:#5ef0c8;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;}
+  body{display:flex;flex-direction:column;min-height:100%;}
+  header{padding:14px 20px 6px;}
+  .course{font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.22em;color:var(--cy);text-transform:uppercase;}
+  h1{margin:6px 0 2px;font-size:17px;font-weight:600;}
+  .sub{font-size:12.5px;color:var(--dim);}
+  main{flex:1;display:flex;gap:14px;padding:8px 20px 18px;min-height:0;}
+  .stage{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;}
+  canvas{display:block;width:100%;background:#0b0f16;border:1px solid var(--line);border-radius:10px;}
+  #scene{aspect-ratio:2.25/1;touch-action:none;cursor:crosshair;}
+  #chart{aspect-ratio:3.6/1;}
+  aside{width:280px;flex:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 13px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;}
+  .t{font:600 10px/1 ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--dim);}
+  label .v{color:var(--ink);font-family:ui-monospace,monospace;}
+  label.row{flex-direction:row;align-items:center;gap:8px;color:var(--ink);}
+  input[type=range]{width:100%;accent-color:var(--cy);margin:0;}
+  .seg{display:flex;gap:5px;flex-wrap:wrap;}
+  .seg button,.btn{flex:1;font:600 11px/1 ui-monospace,monospace;color:var(--dim);background:#0f141c;border:1px solid var(--line);border-radius:7px;padding:8px 4px;cursor:pointer;}
+  .seg button.on{border-color:var(--cy);color:var(--cy);background:rgba(79,214,224,.1);}
+  .btn:hover{color:var(--cy);border-color:var(--cy);}
+  .read{font:500 11.5px/1.7 ui-monospace,monospace;color:var(--dim);}
+  .read b{color:var(--ink);font-weight:600;}
+  .eq{font:500 12px/1.5 ui-monospace,monospace;color:var(--ink);background:#0b0f16;border:1px solid var(--line);border-radius:8px;padding:8px 10px;}
+  .note{font-size:11px;line-height:1.5;color:var(--dim);}
+  .ok{color:var(--ok)!important;} .bad{color:var(--force)!important;}
+  @media (max-width:900px){main{flex-direction:column;} aside{width:auto;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="course">MM806 · Haptics</div>
+  <h1>Haptic rendering of a virtual wall: spring + damper on the probe</h1>
+  <div class="sub">The device position (HIP) penetrates the wall; the proxy stays on the surface; the spring and damper between them produce the force sent to the motors at the servo rate.</div>
+</header>
+<main>
+  <div class="stage">
+    <canvas id="scene" width="1350" height="600"></canvas>
+    <canvas id="chart" width="1350" height="375"></canvas>
+  </div>
+  <aside>
+    <div class="eq">F = −K·d − B·ḋ &nbsp;(d &gt; 0)<br>F = 0 &nbsp;(d ≤ 0, free space)</div>
+    <div class="t">Hand</div>
+    <div class="seg" id="mode"><button data-v="auto" class="on">Auto motion</button><button data-v="mouse">Drag with mouse</button></div>
+    <div class="t">Virtual wall</div>
+    <label>Stiffness K <span class="v" id="vK"></span><input type="range" id="K" min="2" max="3.9" step="0.01" value="2.7"></label>
+    <label>Damping B <span class="v" id="vB"></span><input type="range" id="B" min="0" max="20" step="0.1" value="2"></label>
+    <label class="row"><input type="checkbox" id="uni" checked> Unilateral (wall never pulls)</label>
+    <div class="t">Device</div>
+    <div class="seg" id="rate"><button data-v="1000" class="on">1 kHz</button><button data-v="500">500 Hz</button><button data-v="200">200 Hz</button><button data-v="100">100 Hz</button></div>
+    <label>Device + hand damping b <span class="v" id="vbd"></span><input type="range" id="bd" min="0.1" max="6" step="0.1" value="3"></label>
+    <label>Time scale <span class="v" id="vts"></span><input type="range" id="ts" min="0.02" max="1" step="0.01" value="0.25"></label>
+    <div style="display:flex;gap:6px"><button class="btn" id="pause">Pause</button><button class="btn" id="reset">Reset</button></div>
+    <div class="read" id="read"></div>
+    <div class="note">Try 100 Hz with K = 5000 N/m: the force is held constant between samples, the wall returns more energy than it absorbs and the probe chatters. The sufficient passivity condition (Colgate &amp; Schenkel) is b &gt; K·T/2 + |B|, with T the servo period.</div>
+  </aside>
+</main>
+<script>
+// ---------------- physics (SI units, 1-D along x; wall surface at x = 0, wall occupies x > 0) ----------------
+const P={ K:500, B:2, uni:true, fs:1000, bd:3, ts:0.25, mode:'auto', m:0.08, kh:200, Fmax:10 };
+const S={ t:0, x:-0.035, v:0, xt:-0.035, F:0, nextS:0, xsPrev:-0.035, vs:0, dS:0, Fk:0, Fb:0, contact:false, E:0, Elast:null, paused:false, mouseX:null };
+const DT=1/20000, HIST=4, hist=[];          // 4 s of history
+let histAcc=0;
+function target(t){ if(P.mode==='mouse' && S.mouseX!=null) return S.mouseX; return -0.008+0.035*Math.sin(2*Math.PI*0.45*t); }  // reaches 27 mm "inside" the wall
+function physStep(){
+  const t=S.t;
+  // servo loop: sample position, estimate velocity by backward difference, compute and HOLD the force (zero-order hold)
+  if(t>=S.nextS){ const T=1/P.fs, xs=S.x; S.vs=(xs-S.xsPrev)/T; S.xsPrev=xs; S.nextS+=T;
+    const d=xs;                                     // penetration of the HIP behind the proxy (proxy on the surface)
+    if(d>0){ S.Fk=-P.K*d; S.Fb=-P.B*S.vs; let F=S.Fk+S.Fb; if(P.uni && F>0){ F=0; } S.F=Math.max(-P.Fmax,Math.min(P.Fmax,F)); S.dS=d; }
+    else { S.F=0; S.Fk=0; S.Fb=0; S.dS=0; } }
+  // hand (spring-damper to the intended position) + device mass + physical damping
+  const xt=target(t), xtp=target(t+DT), vt=(xtp-xt)/DT; S.xt=xt;
+  const Fh=P.kh*(xt-S.x)+0.5*(vt-S.v);
+  const bdev=Math.max(0,P.bd-0.5);                 // part of b that is device damping (0.5 N·s/m is in the hand term above)
+  const a=(Fh+S.F-bdev*S.v)/P.m; S.v+=a*DT; S.x+=S.v*DT;
+  // energy the wall puts into the device during each contact (> 0 means the wall is not passive)
+  const inC=S.x>0||S.F!==0; if(inC && !S.contact){ S.contact=true; S.E=0; } if(S.contact) S.E+=S.F*S.v*DT; if(!inC && S.contact){ S.contact=false; S.Elast=S.E; }
+  S.t+=DT;
+  histAcc+=DT; if(histAcc>=0.0005){ histAcc=0; hist.push([S.t,S.x,S.xt,S.F]); while(hist.length && hist[0][0]<S.t-HIST) hist.shift(); } }
+
+// ---------------- drawing ----------------
+const sc=document.getElementById('scene'), g=sc.getContext('2d'), W=sc.width, H=sc.height;
+const ch=document.getElementById('chart'), gc=ch.getContext('2d'), CW=ch.width, CH=ch.height;
+const X0=W*0.66, PX=18000;                         // wall surface at X0, 18 px per mm
+const px=x=>X0+x*PX, Y=H*0.52;
+function zigzag(x0,x1,y,n,amp){ g.beginPath(); g.moveTo(x0,y); const L=x1-x0, lead=Math.min(10,Math.abs(L)*0.15);
+  g.lineTo(x0+lead,y); for(let i=0;i<n;i++){ const xa=x0+lead+(L-2*lead)*(i+0.5)/n; g.lineTo(xa,y+(i%2?amp:-amp)); } g.lineTo(x1-lead,y); g.lineTo(x1,y); g.stroke(); }
+function dashpot(x0,x1,y,h){ const L=x1-x0, mid=x0+L*0.45, cw=Math.max(14,L*0.35);
+  g.beginPath(); g.moveTo(x0,y); g.lineTo(mid,y); g.moveTo(mid,y-h); g.lineTo(mid,y+h); g.stroke();                 // piston
+  g.beginPath(); g.moveTo(x1,y); g.lineTo(mid+cw*0.55,y); g.moveTo(mid-cw*0.25,y-h-5); g.lineTo(mid+cw*0.55,y-h-5); g.lineTo(mid+cw*0.55,y+h+5); g.lineTo(mid-cw*0.25,y+h+5); g.stroke(); } // cylinder
+function arrow(x0,y0,x1,y1,col,w=4){ g.strokeStyle=col; g.fillStyle=col; g.lineWidth=w; g.beginPath(); g.moveTo(x0,y0); g.lineTo(x1,y1); g.stroke();
+  const a=Math.atan2(y1-y0,x1-x0), s=14; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x1-s*Math.cos(a-0.45),y1-s*Math.sin(a-0.45)); g.lineTo(x1-s*Math.cos(a+0.45),y1-s*Math.sin(a+0.45)); g.closePath(); g.fill(); }
+function text(s,x,y,col='#d3dce6',f='600 19px ui-sans-serif, system-ui, sans-serif',al='left'){ g.fillStyle=col; g.font=f; g.textAlign=al; g.fillText(s,x,y); g.textAlign='left'; }
+function drawScene(){
+  g.clearRect(0,0,W,H);
+  // wall: semi-transparent so the penetrating HIP stays visible
+  g.fillStyle='rgba(120,135,160,0.16)'; g.fillRect(X0,0,W-X0,H);
+  g.save(); g.beginPath(); g.rect(X0,0,W-X0,H); g.clip(); g.strokeStyle='rgba(150,165,190,0.22)'; g.lineWidth=2; for(let k=-H;k<W;k+=26){ g.beginPath(); g.moveTo(X0+k,0); g.lineTo(X0+k+H,H); g.stroke(); } g.restore();
+  g.strokeStyle='#9fb0c8'; g.lineWidth=4; g.beginPath(); g.moveTo(X0,0); g.lineTo(X0,H); g.stroke();
+  text('virtual wall',X0+18,H-96,'#9fb0c8'); text('x = 0 (surface)',X0+18,H-72,'#6f7d8e','500 16px ui-monospace, monospace');
+  // mm ruler
+  g.strokeStyle='#2b3746'; g.lineWidth=1; g.fillStyle='#55657a'; g.font='500 13px ui-monospace, monospace'; g.textAlign='center';
+  for(let mm=-45;mm<=25;mm+=5){ const x=px(mm/1000); g.beginPath(); g.moveTo(x,H-28); g.lineTo(x,H-(mm%10?36:44)); g.stroke(); if(mm%10===0) g.fillText(mm+' mm',x,H-10); } g.textAlign='left';
+  const hip=px(S.x), prox=px(Math.min(S.x,0)), d=Math.max(0,S.x);
+  // hand intention (target) marker
+  const tx=px(S.xt); g.strokeStyle='rgba(211,220,230,0.35)'; g.setLineDash([6,6]); g.lineWidth=2; g.beginPath(); g.moveTo(tx,Y-40); g.lineTo(tx,Y+150); g.stroke(); g.setLineDash([]);
+  text('hand target',tx,Y+172,'#6f7d8e','500 14px ui-monospace, monospace','center');
+  // stylus from the hand to the device point
+  g.strokeStyle='#8f9aab'; g.lineWidth=16; g.lineCap='round'; g.beginPath(); g.moveTo(hip-330,Y+150); g.lineTo(hip-30,Y+12); g.stroke();
+  g.strokeStyle='#5b6573'; g.lineWidth=7; g.beginPath(); g.moveTo(hip-30,Y+12); g.lineTo(hip,Y); g.stroke(); g.lineCap='butt';
+  text('haptic device stylus',hip-330,Y+185,'#6f7d8e','500 15px ui-monospace, monospace');
+  // spring + damper between proxy (on the surface) and HIP (inside the wall)
+  if(d>0){ const ys=Y-75, yd=Y-150;
+    g.strokeStyle='#c9d4e0'; g.lineWidth=4; g.beginPath(); g.moveTo(prox,yd-24); g.lineTo(prox,Y-12); g.moveTo(hip,yd-24); g.lineTo(hip,Y-14); g.stroke();   // end plates
+    g.strokeStyle='#ffd166'; g.lineWidth=3.5; zigzag(prox,hip,ys,Math.max(4,Math.min(12,Math.round((hip-prox)/9))),14);
+    g.strokeStyle='#7aa2ff'; g.lineWidth=3.5; dashpot(prox,hip,yd,13);
+    text('spring K',(prox+hip)/2,ys+40,'#ffd166','600 16px ui-sans-serif, system-ui, sans-serif','center');
+    text('damper B',(prox+hip)/2,yd-34,'#7aa2ff','600 16px ui-sans-serif, system-ui, sans-serif','center');
+    g.strokeStyle='rgba(255,255,255,0.25)'; g.lineWidth=1; g.beginPath(); g.moveTo(prox,Y+40); g.lineTo(hip,Y+40); g.stroke();
+    text(`d = ${(d*1000).toFixed(1)} mm`,hip+14,Y+46,'#d3dce6','600 17px ui-monospace, monospace','left'); }
+  // HIP (device) and proxy (god-object)
+  g.setLineDash([5,4]); g.strokeStyle='#4fd6e0'; g.lineWidth=3; g.beginPath(); g.arc(hip,Y,13,0,7); g.stroke(); g.setLineDash([]);
+  text('HIP (device)',hip,Y-252,'#4fd6e0','600 16px ui-sans-serif, system-ui, sans-serif','center');
+  g.strokeStyle='rgba(79,214,224,0.4)'; g.lineWidth=1; g.beginPath(); g.moveTo(hip,Y-244); g.lineTo(hip,Y-205); g.stroke();
+  g.fillStyle='#e6ecf3'; g.beginPath(); g.arc(prox,Y,15,0,7); g.fill(); g.strokeStyle='#06080d'; g.lineWidth=2; g.stroke();
+  text('proxy',prox-22,Y-22,'#e6ecf3','600 16px ui-sans-serif, system-ui, sans-serif','right');
+  // force arrow (on the device, pushing it out of the wall)
+  if(Math.abs(S.F)>1e-4){ const L=Math.min(330,Math.abs(S.F)*55), dir=Math.sign(S.F); arrow(hip,Y-215,hip+dir*L,Y-215,'#ff6b7a',5);
+    text(`F = ${S.F.toFixed(2)} N`,hip+dir*L+(dir<0?-12:12),Y-208,'#ff6b7a','700 19px ui-monospace, monospace',dir<0?'right':'left'); }
+  if(P.mode==='mouse') text('drag in this view to move your hand',20,H-60,'#6f7d8e','500 15px ui-monospace, monospace');
+  text(S.paused?'PAUSED':`servo ${P.fs} Hz · shown at ${P.ts.toFixed(2)}× real time`,20,32,S.paused?'#ffd166':'#6f7d8e','600 16px ui-monospace, monospace'); }
+function drawChart(){
+  gc.clearRect(0,0,CW,CH); if(hist.length<2) return;
+  const t1=S.t, t0=t1-HIST, L=70, R=CW-20, Th=(CH-50)/2;
+  const tx=t=>L+(t-t0)/HIST*(R-L);
+  const panel=(top,label,min,max,series,zero)=>{ const yv=v=>top+Th-(v-min)/(max-min)*Th;
+    gc.strokeStyle='#1d2632'; gc.lineWidth=1; gc.strokeRect(L,top,R-L,Th);
+    gc.fillStyle='#6f7d8e'; gc.font='500 14px ui-monospace, monospace'; gc.fillText(label,L+8,top+18);
+    gc.textAlign='right'; gc.fillText(String(max),L-8,top+12); gc.fillText(String(min),L-8,top+Th); gc.textAlign='left';
+    if(zero!=null){ gc.strokeStyle='#9fb0c8'; gc.setLineDash([4,4]); gc.beginPath(); gc.moveTo(L,yv(zero)); gc.lineTo(R,yv(zero)); gc.stroke(); gc.setLineDash([]); }
+    for(const [idx,col,w,dash] of series){ gc.strokeStyle=col; gc.lineWidth=w; gc.setLineDash(dash||[]); gc.beginPath();
+      hist.forEach((h,i)=>{ const v=Math.max(min,Math.min(max,h[idx]*(idx<3?1000:1))); const X=tx(h[0]), Yv=yv(v); i?gc.lineTo(X,Yv):gc.moveTo(X,Yv); }); gc.stroke(); gc.setLineDash([]); } };
+  panel(10,'position (mm): device, hand target, wall at 0',-50,30,[[2,'rgba(211,220,230,0.4)',1.5,[5,5]],[1,'#4fd6e0',2.2]],0);
+  panel(30+Th,'force on device (N), held between servo samples',-10,2,[[3,'#ff6b7a',2.2]],0);
+  gc.fillStyle='#55657a'; gc.font='500 13px ui-monospace, monospace'; gc.fillText('last 4 s',R-60,CH-6); }
+// ---------------- UI ----------------
+const $=id=>document.getElementById(id);
+function readout(){ const T=1/P.fs, lim=P.K*T/2+P.B, pass=P.bd>lim;
+  $('read').innerHTML=`penetration <b>${(Math.max(0,S.x)*1000).toFixed(2)} mm</b><br>spring −K·d <b>${S.Fk.toFixed(2)} N</b><br>damper −B·ḋ <b>${S.Fb.toFixed(2)} N</b><br>force sent <b>${S.F.toFixed(2)} N</b> (limit ±${P.Fmax} N)<br>`+
+  `K·T/2 + |B| = <b>${lim.toFixed(2)}</b> vs b = <b>${P.bd.toFixed(1)}</b><br><b class="${pass?'ok':'bad'}">${pass?'passive (guaranteed)':'passivity not guaranteed'}</b><br>`+
+  `energy from wall, last contact <b class="${S.Elast>1e-4?'bad':''}">${S.Elast==null?'—':(S.Elast*1000).toFixed(2)+' mJ'}</b>`; }
+function sync(){ P.K=Math.round(Math.pow(10,+$('K').value)); P.B=+$('B').value; P.uni=$('uni').checked; P.bd=+$('bd').value; P.ts=+$('ts').value;
+  $('vK').textContent=P.K+' N/m'; $('vB').textContent=P.B.toFixed(1)+' N·s/m'; $('vbd').textContent=P.bd.toFixed(1)+' N·s/m'; $('vts').textContent=P.ts.toFixed(2)+'×'; }
+['K','B','uni','bd','ts'].forEach(id=>$(id).oninput=sync);
+document.querySelectorAll('#rate button').forEach(b=>b.onclick=()=>{ P.fs=+b.dataset.v; document.querySelectorAll('#rate button').forEach(x=>x.classList.toggle('on',x===b)); });
+document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{ P.mode=b.dataset.v; document.querySelectorAll('#mode button').forEach(x=>x.classList.toggle('on',x===b)); S.mouseX=P.mode==='mouse'?S.x:null; });
+$('pause').onclick=()=>{ S.paused=!S.paused; $('pause').textContent=S.paused?'Play':'Pause'; };
+$('reset').onclick=()=>{ Object.assign(S,{ t:0, x:-0.035, v:0, F:0, nextS:0, xsPrev:-0.035, contact:false, E:0, Elast:null }); hist.length=0; };
+sc.addEventListener('pointermove',e=>{ if(P.mode!=='mouse' || !(e.buttons&1)) return; const r=sc.getBoundingClientRect(); const xpx=(e.clientX-r.left)/r.width*W; S.mouseX=Math.max(-0.045,Math.min(0.025,(xpx-X0)/PX)); });
+sc.addEventListener('pointerdown',e=>{ if(P.mode!=='mouse') return; sc.setPointerCapture(e.pointerId); sc.dispatchEvent(new PointerEvent('pointermove',{clientX:e.clientX,clientY:e.clientY,buttons:1})); });
+sync();
+let last=performance.now();
+function frame(now){ const dt=Math.min(0.05,(now-last)/1000); last=now;
+  if(!S.paused){ const n=Math.round(dt*P.ts/DT); for(let i=0;i<n;i++) physStep(); }
+  drawScene(); drawChart(); readout(); requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+window.__hw={P,S,physStep,sync};
+</script>
+</body>
+</html>
