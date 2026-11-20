@@ -17,7 +17,7 @@
   .masthead .sub{margin-top:2px;font-size:12px;color:var(--ink-dim);}
   .hud{top:0;right:0;padding:14px 18px;text-align:right;font:500 11px/1.7 ui-monospace,Menlo,monospace;color:var(--ink-dim);}
   .hud b{color:var(--hud);font-weight:600;}
-  .panel{top:82px;left:18px;width:222px;pointer-events:auto;background:rgba(21,27,36,.93);
+  .panel{top:82px;left:18px;width:222px;max-height:calc(100vh - 250px) !important;pointer-events:auto;background:rgba(21,27,36,.93);
     border:1px solid var(--line);border-radius:10px;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);max-height:calc(100vh - 100px);overflow:auto;}
   .panel-toggle{width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);
     border-radius:10px 10px 0 0;color:var(--signal);font:600 10px/1 ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:10px 12px;cursor:pointer;position:sticky;top:0;background:rgba(21,27,36,.98);}
@@ -61,6 +61,7 @@
         <div class="seg" id="seg-view">
           <button data-v="side" class="active">Side<br>(light path)</button>
           <button data-v="front">Front<br>(pupil expansion)</button>
+          <button data-v="eye" style="grid-column:span 2">Eye view<br>(how the augmentation is added)</button>
         </div>
       </div>
       <div class="grp">
@@ -72,6 +73,15 @@
         <div class="grp-title">Waveguide</div>
         <label>Thickness <span class="val" id="v-th">1.0</span><input type="range" id="s-th" min="0.4" max="2" step="0.05" value="1"></label>
         <label>Index n <span class="val" id="v-n">1.70</span><input type="range" id="s-n" min="1.5" max="2.0" step="0.01" value="1.7"></label>
+      </div>
+      <div class="grp" id="grp-aug">
+        <div class="grp-title">Augmentation (eye view)</div>
+        <label>Room light <span class="val" id="v-room">200 nits</span><input type="range" id="s-room" min="1.3" max="3.9" step="0.01" value="2.3"></label>
+        <label>Display brightness <span class="val" id="v-disp">500 nits</span><input type="range" id="s-disp" min="0" max="1000" step="10" value="500"></label>
+        <label>Glass transmission T <span class="val" id="v-T">0.70</span><input type="range" id="s-T" min="0.2" max="1" step="0.01" value="0.7"></label>
+        <label class="row"><input type="checkbox" id="c-head"> Head motion</label>
+        <label>Tracking-to-photon latency <span class="val" id="v-lat">20 ms</span><input type="range" id="s-lat" min="0" max="150" step="5" value="20"></label>
+        <label class="row"><input type="checkbox" id="c-world" checked> Hologram world-locked (tracked)</label>
       </div>
       <div class="grp">
         <div class="grp-title">Show</div>
@@ -85,7 +95,7 @@
   </div>
 
   <div class="overlay status">
-    <span class="pill">OPTICS</span><span>A microdisplay's collimated light is diffracted into the glass, bounces by total internal reflection, and is diffracted back out over the eye. Each pixel = one beam angle; the out-coupler replicates the pupil to make an eyebox. The glass stays transparent, so you also see the real world.</span>
+    <span class="pill" id="st-pill">OPTICS</span><span id="st-text">A microdisplay's collimated light is diffracted into the glass, bounces by total internal reflection, and is diffracted back out over the eye. Each pixel = one beam angle; the out-coupler replicates the pupil to make an eyebox. The glass stays transparent, so you also see the real world.</span>
   </div>
 
 <script>
@@ -111,6 +121,16 @@ window.addEventListener('resize', resize); resize();
 // ---- state -----------------------------------------------------------------
 let field=0, thick=1, nIdx=1.70, eyebox=true, rgb=false, real=true, photon=true, labels=true, sweep=false;
 let view='side';
+let roomNits=Math.pow(10,2.3), dispNits=500, T=0.7, headMove=false, latMs=20, worldLocked=true, simT=0;
+$('s-room').addEventListener('input',e=>{ roomNits=Math.pow(10,+e.target.value); $('v-room').textContent=Math.round(roomNits)+' nits'+(roomNits>2000?' (daylight)':roomNits<60?' (dim room)':''); });
+$('s-disp').addEventListener('input',e=>{ dispNits=+e.target.value; $('v-disp').textContent=dispNits+' nits'; });
+$('s-T').addEventListener('input',e=>{ T=+e.target.value; $('v-T').textContent=T.toFixed(2); });
+$('c-head').addEventListener('change',e=>headMove=e.target.checked);
+$('s-lat').addEventListener('input',e=>{ latMs=+e.target.value; $('v-lat').textContent=latMs+' ms'; });
+$('c-world').addEventListener('change',e=>worldLocked=e.target.checked);
+const STATUS={ side:['OPTICS',"A microdisplay's collimated light is diffracted into the glass, bounces by total internal reflection, and is diffracted back out over the eye. Each pixel = one beam angle; the out-coupler replicates the pupil to make an eyebox. The glass stays transparent, so real-world light from the same direction reaches the same retinal point: the pixel is laid over that part of the world."],
+  front:['EYEBOX','Seen from the front: the fold grating copies the beam sideways, the out-coupler copies it downward and ejects it toward the eye, so the small input pupil becomes a large grid of exit pupils.'],
+  eye:['AUGMENTATION','On the retina the two lights simply add: perceived = T × real world + display light. The waveguide can only ADD light: black pixels are transparent, holograms look translucent and wash out when the room is brighter than the display, and they only exist inside the display field of view (the label is cut off at its edge). Turn on head motion and raise the latency: the world-locked hologram lags behind the real cube.'] };
 let tAnim=0, sweepPhase=0;
 $('s-field').addEventListener('input',e=>{ field=+e.target.value; $('v-field').textContent=field+'°'; });
 $('c-sweep').addEventListener('change',e=>sweep=e.target.checked);
@@ -121,7 +141,7 @@ $('c-rgb').addEventListener('change',e=>rgb=e.target.checked);
 $('c-real').addEventListener('change',e=>real=e.target.checked);
 $('c-photon').addEventListener('change',e=>photon=e.target.checked);
 $('c-labels').addEventListener('change',e=>labels=e.target.checked);
-document.querySelectorAll('#seg-view button').forEach(b=>b.addEventListener('click',()=>{ view=b.dataset.v;
+document.querySelectorAll('#seg-view button').forEach(b=>b.addEventListener('click',()=>{ view=b.dataset.v; $('st-pill').textContent=STATUS[view][0]; $('st-text').textContent=STATUS[view][1];
   document.querySelectorAll('#seg-view button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); }));
 $('panel-toggle').addEventListener('click', ()=>{ const b=$('panel-body'); const open=b.style.display!=='none';
   b.style.display=open?'none':''; $('panel-toggle').setAttribute('aria-expanded',String(!open));
@@ -275,11 +295,100 @@ function drawFront(){
   $('h-exit').textContent=(N*M)+' pupils';
 }
 
+// ===========================================================================
+//  EYE VIEW: how the augmentation is added. Optical see-through is ADDITIVE:
+//  retina = T * (real-world luminance) + (display luminance), per direction.
+//  Brightness unit: 250 nits on screen = full white.
+// ===========================================================================
+const HFOV=90, VFOV=50;                   // shown portion of the natural field of view (deg)
+const DH=20, DV=13;                       // hologram field of view half-angles (deg), matches the field-angle slider range
+const realC=document.createElement('canvas'), dispC=document.createElement('canvas'), compC=document.createElement('canvas');
+function yawAt(t){ return headMove? 14*Math.sin(t*1.6)+4*Math.sin(t*3.7) : 0; }
+function drawWorld(g,w,h,yaw){ const X=az=>(az-yaw+HFOV/2)/HFOV*w, Y=el=>(VFOV/2-el)/VFOV*h;
+  let gr=g.createLinearGradient(0,0,0,Y(-8)); gr.addColorStop(0,'#8a93a0'); gr.addColorStop(1,'#a3abb5'); g.fillStyle=gr; g.fillRect(0,0,w,Y(-8));
+  gr=g.createLinearGradient(0,Y(-8),0,h); gr.addColorStop(0,'#6e6255'); gr.addColorStop(1,'#4c4238'); g.fillStyle=gr; g.fillRect(0,Y(-8),w,h-Y(-8));
+  // window
+  g.fillStyle='#cfe6ff'; g.fillRect(X(-36),Y(20),X(-20)-X(-36),Y(2)-Y(20)); g.strokeStyle='#e9edf2'; g.lineWidth=Math.max(2,w*0.006); g.strokeRect(X(-36),Y(20),X(-20)-X(-36),Y(2)-Y(20));
+  g.beginPath(); g.moveTo(X(-28),Y(20)); g.lineTo(X(-28),Y(2)); g.moveTo(X(-36),Y(11)); g.lineTo(X(-20),Y(11)); g.stroke();
+  // poster
+  g.fillStyle='#b8865b'; g.fillRect(X(30),Y(16),X(40)-X(30),Y(4)-Y(16));
+  // table (top surface + front edge + legs)
+  g.fillStyle='#8a6a4a'; g.beginPath(); g.moveTo(X(-14),Y(-12)); g.lineTo(X(24),Y(-12)); g.lineTo(X(20),Y(-8.5)); g.lineTo(X(-10),Y(-8.5)); g.closePath(); g.fill();
+  g.fillStyle='#6e5238'; g.fillRect(X(-14),Y(-12),X(24)-X(-14),Y(-13.2)-Y(-12));
+  g.fillStyle='#5a4632'; for(const a of [-13,22]) g.fillRect(X(a),Y(-13.2),Math.max(3,w*0.008),Y(-25)-Y(-13.2));
+  // red cube (front + top + side)
+  g.fillStyle='#c0392b'; g.fillRect(X(2),Y(-1.5),X(9)-X(2),Y(-10)-Y(-1.5));
+  g.fillStyle='#d95546'; g.beginPath(); g.moveTo(X(2),Y(-1.5)); g.lineTo(X(9),Y(-1.5)); g.lineTo(X(10.5),Y(0.2)); g.lineTo(X(3.5),Y(0.2)); g.closePath(); g.fill();
+  g.fillStyle='#9e2e22'; g.beginPath(); g.moveTo(X(9),Y(-1.5)); g.lineTo(X(10.5),Y(0.2)); g.lineTo(X(10.5),Y(-8.4)); g.lineTo(X(9),Y(-10)); g.closePath(); g.fill();
+  // mug, plant
+  g.fillStyle='#ece6d8'; g.fillRect(X(-8),Y(-6.5),X(-5)-X(-8),Y(-10.5)-Y(-6.5));
+  g.fillStyle='#9a5a3a'; g.fillRect(X(14),Y(-6.5),X(18)-X(14),Y(-10)-Y(-6.5)); g.fillStyle='#3f8f4f'; g.beginPath(); g.arc(X(16),Y(-3.5),(X(19)-X(13))/2,0,7); g.fill(); }
+// hologram content, rendered by the display in head coordinates (black = no light)
+function drawHolo(g,w,h,yawEst,t){ const X=az=>(az+HFOV/2)/HFOV*w, Y=el=>(VFOV/2-el)/VFOV*h;   // head-fixed display coordinates
+  g.fillStyle='#000'; g.fillRect(0,0,w,h);
+  g.save(); g.beginPath(); g.rect(X(-DH),Y(DV),X(DH)-X(-DH),Y(-DV)-Y(DV)); g.clip();
+  const off=worldLocked?-yawEst:0;   // world-locked: shift by the TRACKED head yaw; head-locked: never moves on screen
+  // 1 a rotating wireframe cube floating above the real red cube
+  const cx=5.8+off, cy=5.5, sz=3.2, a=t*0.8, P=[]; for(const x of [-1,1]) for(const y of [-1,1]) for(const z of [-1,1]){ const xr=x*Math.cos(a)-z*Math.sin(a), zr=x*Math.sin(a)+z*Math.cos(a); const yr=y*Math.cos(0.45)-zr*Math.sin(0.45); P.push([X(cx+xr*sz),Y(cy+yr*sz)]); }
+  g.strokeStyle='#4fd6e0'; g.lineWidth=Math.max(1.5,w*0.004); g.shadowColor='#4fd6e0'; g.shadowBlur=w*0.01;
+  for(const [i,j] of [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]]){ g.beginPath(); g.moveTo(...P[i]); g.lineTo(...P[j]); g.stroke(); } g.shadowBlur=0;
+  // 2 a solid hologram sphere (looks translucent: the table shows through)
+  const sg=g.createRadialGradient(X(-6+off-0.8),Y(-3.8),1,X(-6+off),Y(-5),(X(3)-X(0))); sg.addColorStop(0,'#ffe9a8'); sg.addColorStop(0.5,'#e0a030'); sg.addColorStop(1,'#5a3a08');
+  g.fillStyle=sg; g.beginPath(); g.arc(X(-6+off),Y(-5),(X(3)-X(0)),0,7); g.fill();
+  // 3 an info panel with a BLACK background: black = no light = transparent
+  const px=X(12+off), py=Y(12), pw=X(23)-X(12), ph=Y(6)-Y(12);   // deliberately wider than the FOV edge (20 deg): it gets cut off
+  g.fillStyle='#000'; g.fillRect(px,py,pw,ph); g.strokeStyle='#ffd166'; g.lineWidth=Math.max(1,w*0.003); g.strokeRect(px,py,pw,ph);
+  g.fillStyle='#ffffff'; g.font=`600 ${Math.max(7,h*0.034)}px ui-monospace,monospace`; g.textBaseline='top'; g.fillText('Cube 20 cm',px+pw*0.06,py+ph*0.15); g.fillStyle='#ffd166'; g.fillText('black bg, cut by FOV',px+pw*0.06,py+ph*0.55);
+  // 4 a "dark" hologram: a dark grey slab is barely visible
+  g.fillStyle='#262626'; g.fillRect(X(-17+off),Y(10),X(-11)-X(-17),Y(6)-Y(10)); g.fillStyle='#777'; g.font=`600 ${Math.max(7,h*0.035)}px ui-monospace,monospace`; g.fillText('dark grey',X(-16.6+off),Y(9.2));
+  g.restore();
+  // the pixel selected by the field-angle slider (the beam in the side view)
+  g.strokeStyle='rgba(94,240,200,0.9)'; g.lineWidth=1; g.setLineDash([3,4]); g.beginPath(); g.moveTo(X(field),Y(DV)); g.lineTo(X(field),Y(-DV)); g.stroke(); g.setLineDash([]); }
+function fovBox(x,y,w,h,col,label){ const X=az=>x+(az+HFOV/2)/HFOV*w, Y=el=>y+(VFOV/2-el)/VFOV*h; ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.setLineDash([6,5]); ctx.strokeRect(X(-DH),Y(DV),X(DH)-X(-DH),Y(-DV)-Y(DV)); ctx.setLineDash([]);
+  if(label) text(label,X(-DH)+4,Y(DV)-9,col,10); }
+function drawEyeView(){
+  simT+=1/60; const yaw=yawAt(simT), yawEst=yawAt(simT-latMs/1000);
+  const x0=Math.max(258,W*0.2), aw=W-x0-24, top=86;
+  const sw=Math.min((aw-70)/2, (H*0.30)*HFOV/VFOV), sh=sw*VFOV/HFOV;                 // small panels
+  const bw=Math.min(aw, (H-top-sh-165)*HFOV/VFOV), bh=bw*VFOV/HFOV;                   // big panel
+  // images are normalised to the eye's adaptation: the real scene (mean grey ~0.5) represents T x room luminance,
+  // so a display of L nits appears at L / (2 T L_room) of full white. Only the RATIO of the two lights matters.
+  const realScale=0.95, dispScale=dispNits/(2*T*roomNits);
+  for(const c of [realC,dispC,compC]){ if(c.width!==Math.round(bw)){ c.width=Math.round(bw); c.height=Math.round(bh); } }
+  const rg=realC.getContext('2d'); drawWorld(rg,realC.width,realC.height,yaw);
+  const dg=dispC.getContext('2d'); drawHolo(dg,dispC.width,dispC.height,yawEst,simT);
+  // composite: T x real + display light (additive), on the retina
+  const cg=compC.getContext('2d'); cg.globalCompositeOperation='source-over'; cg.fillStyle='#000'; cg.fillRect(0,0,compC.width,compC.height);
+  cg.filter=`brightness(${realScale})`; cg.drawImage(realC,0,0); cg.filter=`brightness(${dispScale})`; cg.globalCompositeOperation='lighter'; cg.drawImage(dispC,0,0); cg.globalCompositeOperation='source-over'; cg.filter='none';
+  // panels
+  const ax=x0+(aw-(2*sw+70))/2, by=top+sh+44, bx=x0+(aw-bw)/2;
+  ctx.filter=`brightness(${realScale})`; ctx.drawImage(realC,ax,top,sw,sh); ctx.filter=`brightness(${dispScale})`; ctx.drawImage(dispC,ax+sw+70,top,sw,sh); ctx.filter='none';
+  ctx.strokeStyle='#3a4b5e'; ctx.lineWidth=1; ctx.strokeRect(ax,top,sw,sh); ctx.strokeRect(ax+sw+70,top,sw,sh);
+  fovBox(ax+sw+70,top,sw,sh,'#5ef0c8','display field of view');
+  text('+',ax+sw+35,top+sh/2,'#c9d4e0',30,'center');
+  text(`① real world through the glass  × T = ${T.toFixed(2)}  (${Math.round(T*roomNits)} nits)`,ax,top-12,'#c9d4e0',11);
+  text(`② light from the waveguide (black = no light)  ${dispNits} nits`,ax+sw+70,top-12,'#5ef0c8',11);
+  ctx.drawImage(compC,bx,by,bw,bh); ctx.strokeStyle='#4fd6e0'; ctx.lineWidth=1.5; ctx.strokeRect(bx,by,bw,bh);
+  fovBox(bx,by,bw,bh,'rgba(94,240,200,0.55)','hologram field of view'); text('=',bx-14,by+bh/2,'#c9d4e0',30,'center');
+  text('③ what the eye sees  =  T × real world  +  display light',bx,by-12,'#4fd6e0',12);
+  // where the hologram SHOULD be (on top of the real cube) vs where it is drawn
+  const err=worldLocked?(yaw-yawEst):yaw, X=az=>bx+(az+HFOV/2)/HFOV*bw;
+  // numbers
+  const Lr=T*roomNits, cr=(Lr+dispNits)/Math.max(1e-6,Lr);
+  const lines=[`real light reaching the eye: T × ${Math.round(roomNits)} = ${Math.round(Lr)} nits   ·   display adds ${dispNits} nits`,
+    `hologram contrast over the world: (${Math.round(Lr)} + ${dispNits}) / ${Math.round(Lr)} = ${cr.toFixed(2)} : 1  ${cr<1.5?'→ washed out':cr<3?'→ faint':'→ clearly visible'}`,
+    `(both images normalised to the eye's adaptation; only the ratio of the two lights matters)`,
+    `registration: ${worldLocked?'world-locked, rendered with the head pose from '+latMs+' ms ago':'head-locked (not tracked): it moves with the head'} → error ${err.toFixed(1)}°`];
+  lines.forEach((l,i)=>text(l,bx,by+bh+20+i*17,i===1?(cr<1.5?'#ff7a7a':cr<3?'#ffd166':'#5ef0c8'):i===3?(Math.abs(err)>1?'#ff7a7a':'#9fb0c0'):'#6b7888',11));
+  $('h-field').textContent=field.toFixed(0)+'°'; $('h-tir').textContent='—'; $('h-crit').textContent='—'; $('h-exit').textContent='CR '+cr.toFixed(1);
+}
+
 function render(){
   ctx.clearRect(0,0,W,H);
   if(sweep){ sweepPhase+=0.01; field=Math.sin(sweepPhase)*18; $('s-field').value=field.toFixed(1); $('v-field').textContent=field.toFixed(0)+'°'; }
   tAnim=(tAnim+0.008)%1;
   if(view==='front'){ drawFront(); requestAnimationFrame(render); return; }
+  if(view==='eye'){ drawEyeView(); requestAnimationFrame(render); return; }
 
   const ycMain=H*0.40;
   // light engine (microdisplay + collimating lens)
@@ -336,8 +445,12 @@ function drawEye(info){
   ctx.strokeStyle='rgba(94,240,200,0.9)'; ctx.lineWidth=1.2;
   for(const e of use){ const hit=[Math.max(cx-pupilR,Math.min(cx+pupilR,e.to[0])), lensY];
     ctx.beginPath(); ctx.moveTo(hit[0],hit[1]); ctx.lineTo(foc[0],foc[1]); ctx.stroke(); }
-  dot(foc,3,'#ffd166');
-  if(labels){ text('eye', cx+eR+6, cy, '#9fb0c0',11); text('retinal image', foc[0]+8, foc[1], '#ffd166',10); text('eyebox', cx, lensY-14,'#5ef0c8',10,'center'); }
+  // real-world light from the SAME direction passes straight through the glass and focuses on the SAME retinal point
+  if(real){ const top=H*0.07; for(const k of [-0.55,0,0.55]){ const hx=cx+k*pupilR, st=[hx-Math.tan(fa)*(lensY-top), top];
+      line(st,[hx,lensY],'rgba(255,240,200,0.75)',1.4,[6,4]); line([hx,lensY],foc,'rgba(255,240,200,0.75)',1.2); }
+    if(labels){ const lx=cx-Math.tan(fa)*(lensY-top)-pupilR-8; text('real-world light from the same direction',lx,top+12,'rgba(255,240,200,0.9)',10,'right'); text('(passes through the glass)',lx,top+26,'rgba(255,240,200,0.7)',10,'right'); } }
+  dot(foc,real?5:3,'#ffd166');
+  if(labels){ text('eye', cx+eR+6, cy, '#9fb0c0',11); text(real?'retina: hologram pixel + real point add up':'retinal image', foc[0]+10, foc[1], '#ffd166',10); text('eyebox', cx, lensY-14,'#5ef0c8',10,'center'); }
 }
 
 render();
