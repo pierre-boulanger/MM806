@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Nova: an AI dog for WebXR</title>
+<style>
+  :root { --glass: rgba(18,22,30,.72); --ink: #f2f4f8; --dim: #9aa3b2; --acc: #f2b35a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1015; font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); }
+  canvas { display: block; touch-action: none; }
+  #overlay { position: fixed; inset: 0; pointer-events: none; }
+  #overlay > * { pointer-events: auto; }
+  .panel { background: var(--glass); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; }
+  #hud { position: absolute; top: 10px; left: 10px; width: 250px; padding: 10px 12px; }
+  #hud h1 { margin: 0 0 2px; font-size: 16px; font-weight: 650; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  #behav { font-size: 12px; font-weight: 500; color: var(--acc); }
+  #thought { color: var(--dim); font-size: 12.5px; margin-bottom: 8px; min-height: 17px; }
+  .bar { display: grid; grid-template-columns: 74px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); margin: 3px 0; }
+  .bar i { display: block; height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+  .bar i b { display: block; height: 100%; width: 50%; border-radius: 3px; background: var(--acc); transition: width .2s; }
+  details { margin-top: 8px; font-size: 12px; color: var(--dim); }
+  summary { cursor: pointer; color: var(--ink); }
+  #skills .bar i b { background: #7cc4a0; }
+  #log { position: absolute; top: 10px; right: 10px; width: 280px; padding: 8px 10px; font-size: 12px; color: var(--dim); max-height: 40vh; overflow: hidden; }
+  #log div { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+  #log div:first-child { color: var(--ink); }
+  #bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 10px calc(10px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  #cmds, #xr { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 6px; }
+  button { appearance: none; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.08); color: var(--ink); border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 550; cursor: pointer; touch-action: manipulation; }
+  button:hover { background: rgba(255,255,255,.16); }
+  button:active { transform: scale(.97); }
+  button.on { background: var(--acc); color: #1a1206; border-color: transparent; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: #3b6fd8; border-color: transparent; }
+  #help { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 40px); overflow: auto; padding: 18px 20px; display: none; }
+  #help.show { display: block; }
+  #help h2 { margin: 0 0 8px; font-size: 18px; }
+  #help h3 { margin: 12px 0 4px; font-size: 13px; color: var(--acc); }
+  #help p, #help li { color: #cfd5df; font-size: 13px; margin: 3px 0; }
+  #help ul { padding-left: 18px; margin: 4px 0; }
+  kbd { background: rgba(255,255,255,.12); border-radius: 4px; padding: 0 5px; font-size: 12px; }
+  #arhint { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); padding: 8px 14px; display: none; }
+  body.ar #hud, body.ar #log, body.ar #xr .xrenter { display: none; }
+  body.ar #arhint.show { display: block; }
+  #btnPlace { display: none; }
+  body.ar #btnPlace { display: inline-block; }
+  @media (max-width: 720px) {
+    #hud { width: auto; right: 10px; padding: 8px 10px; }
+    #bars { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+    .bar { grid-template-columns: 62px 1fr; font-size: 11px; }
+    #log { display: none; }
+    button { padding: 7px 10px; font-size: 13px; }
+  }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
+</head>
+<body>
+<div id="overlay">
+  <div id="hud" class="panel">
+    <h1><span>🐕 Nova</span><span id="behav">idle</span></h1>
+    <div id="thought">…</div>
+    <div id="bars"></div>
+    <details id="skills"><summary>Training (learned obedience)</summary><div id="skillbars"></div></details>
+  </div>
+  <div id="log" class="panel"></div>
+  <div id="arhint" class="panel">Point at the floor and tap to place Nova</div>
+  <div id="bottom">
+    <div id="cmds" class="panel">
+      <button data-cmd="sit">Sit</button>
+      <button data-cmd="down">Down</button>
+      <button data-cmd="stay">Stay</button>
+      <button data-cmd="come">Come</button>
+      <button data-cmd="throw">🎾 Throw</button>
+      <button data-cmd="drop">Drop it</button>
+      <button data-cmd="speak">Speak</button>
+      <button data-cmd="good">👍 Good dog</button>
+      <button data-cmd="no">✋ No</button>
+      <button id="btnMic">🎤 Voice</button>
+    </div>
+    <div id="xr" class="panel">
+      <button id="btnVR" class="primary xrenter" disabled>Enter VR</button>
+      <button id="btnAR" class="primary xrenter" disabled>Enter AR</button>
+      <button id="btnPlace">Re-place dog</button>
+      <button id="btnHelp">?</button>
+    </div>
+  </div>
+  <div id="help" class="panel">
+    <h2>Nova, an autonomous AI dog</h2>
+    <p>Nova runs on a utility-based behaviour AI: internal drives (energy, need for attention, play drive, curiosity) and moods (happiness, excitement) compete every few hundred milliseconds to pick a behaviour. She perceives where you are, whether you are looking at her, whether you crouch, your hands, and the ball. Obedience is learned: praise within a few seconds of a command she obeyed strengthens it; praise or "no" during spontaneous behaviour makes it more or less likely in future.</p>
+    <h3>Desktop / phone</h3>
+    <ul>
+      <li>Drag to look, <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to walk, hold <kbd>C</kbd> to crouch (she reads it as an invitation).</li>
+      <li>Click or tap the ground to throw the ball there. Press and rub on Nova to pet her.</li>
+      <li>Keys: <kbd>1</kbd> sit, <kbd>2</kbd> down, <kbd>3</kbd> stay, <kbd>4</kbd> come, <kbd>F</kbd> throw, <kbd>R</kbd> drop it, <kbd>B</kbd> speak, <kbd>G</kbd> good dog, <kbd>N</kbd> no.</li>
+    </ul>
+    <h3>VR headset</h3>
+    <ul>
+      <li>Trigger (or pinch with hand tracking) grabs the ball; release while swinging to throw.</li>
+      <li>Touch her head or back with a controller or hand to pet. Squeeze = "good dog".</li>
+      <li><kbd>A</kbd>/<kbd>X</kbd> sit, <kbd>B</kbd>/<kbd>Y</kbd> come, thumbstick click = down.</li>
+    </ul>
+    <h3>Phone AR</h3>
+    <ul><li>Tap the floor to place her. Then tap her to pet, tap elsewhere to throw. The buttons stay on screen.</li></ul>
+    <h3>Voice</h3>
+    <p>"Nova", "sit", "down", "stay", "come", "fetch", "drop it", "speak", "good girl", "no". Unknown words get a head tilt. Needs a browser with speech recognition and microphone access.</p>
+    <p style="color:var(--dim)">WebXR and the microphone need the page served from its own HTTPS origin. Inside an embedded preview they may be blocked; desktop mode always works.</p>
+    <p><button id="btnCloseHelp">Got it</button></p>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const V3 = THREE.Vector3;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const damp = (a, b, k, dt) => lerp(a, b, 1 - Math.exp(-k * dt));
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+const rand = (a, b) => a + Math.random() * (b - a);
+const pct = x => Math.round(x * 100) + '%';
+const NAME = 'Nova';
+let mode = 'desktop'; // desktop | vr | ar
+let now = 0;
+
+function log(msg) {
+  const el = $('log'); const d = document.createElement('div'); d.textContent = msg;
+  el.prepend(d); while (el.children.length > 7) el.lastChild.remove();
+}
+
+/* ---------- renderer / scene ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.xr.enabled = true;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const SKY = new THREE.Color(0xbcd6ea);
+scene.background = SKY;
+scene.fog = new THREE.Fog(SKY, 14, 34);
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.02, 80);
+camera.position.set(0, 1.6, 1.7);
+camera.rotation.order = 'YXZ';
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x7d6c50, 1.15));
+const sun = new THREE.DirectionalLight(0xfff3e0, 1.7);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 0.5, far: 15 });
+sun.shadow.bias = -0.0005;
+scene.add(sun, sun.target);
+
+/* world (hidden in AR) */
+const world = new THREE.Group(); scene.add(world);
+{
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d'); g.fillStyle = '#6f9a4a'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2600; i++) {
+    const l = 30 + Math.random() * 22; g.fillStyle = `hsl(${85 + Math.random() * 25},45%,${l}%)`;
+    g.fillRect(Math.random() * 256, Math.random() * 256, 1.5, 3 + Math.random() * 3);
+  }
+  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(26, 26);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(30, 64), new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; world.add(ground);
+  const trunkM = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 1 });
+  const leafM = new THREE.MeshStandardMaterial({ color: 0x3f7a3a, roughness: 1, flatShading: true });
+  for (let i = 0; i < 16; i++) {
+    const a = i / 16 * Math.PI * 2 + rand(-.15, .15), r = rand(10, 17), s = rand(.8, 1.5);
+    const t = new THREE.Group(); t.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); t.scale.setScalar(s);
+    const tr = new THREE.Mesh(new THREE.CylinderGeometry(.12, .18, 1.4, 7), trunkM); tr.position.y = .7;
+    const lf = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 0), leafM); lf.position.y = 2.1; lf.scale.y = 1.3;
+    tr.castShadow = lf.castShadow = true; t.add(tr, lf); world.add(t);
+  }
+}
+
+/* arena: everything the dog lives in. Floor is y=0 in arena space. Moved onto the real floor in AR. */
+const arena = new THREE.Group(); scene.add(arena);
+const shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.ShadowMaterial({ opacity: .32 }));
+shadowCatcher.rotation.x = -Math.PI / 2; shadowCatcher.position.y = .001; shadowCatcher.receiveShadow = true; shadowCatcher.visible = false;
+arena.add(shadowCatcher);
+
+const BED = new V3(1.7, 0, -2.2);
+{
+  const bed = new THREE.Group(); bed.position.copy(BED);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(.34, .09, 12, 32), new THREE.MeshStandardMaterial({ color: 0x4f63a0, roughness: .95 }));
+  rim.rotation.x = -Math.PI / 2; rim.position.y = .08;
+  const cushion = new THREE.Mesh(new THREE.CylinderGeometry(.33, .33, .05, 32), new THREE.MeshStandardMaterial({ color: 0x92a6dc, roughness: 1 }));
+  cushion.position.y = .03;
+  rim.castShadow = true; rim.receiveShadow = cushion.receiveShadow = true;
+  bed.add(rim, cushion); arena.add(bed);
+}
+
+const reticle = new THREE.Mesh(new THREE.RingGeometry(.09, .12, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+reticle.matrixAutoUpdate = false; reticle.visible = false; scene.add(reticle);
+
+/* ---------- audio: procedurally synthesised, spatialised at the dog's head ---------- */
+const listener = new THREE.AudioListener(); camera.add(listener);
+const actx = listener.context;
+const unlockAudio = () => { if (actx.state !== 'running') actx.resume().catch(() => {}); };
+addEventListener('pointerdown', unlockAudio); addEventListener('keydown', unlockAudio);
+
+function synth(dur, fn) {
+  const sr = actx.sampleRate, n = Math.floor(dur * sr), buf = actx.createBuffer(1, n, sr), d = buf.getChannelData(0);
+  fn(d, sr, n); let pk = 1e-6; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(d[i]));
+  for (let i = 0; i < n; i++) d[i] *= .9 / pk; return buf;
+}
+const SFX = {
+  bark: synth(.3, (d, sr, n) => { let ph = 0, lp = 0, lp2 = 0;
+    for (let i = 0; i < n; i++) { const t = i / sr, u = t / .3;
+      const f = 430 * (1 + .3 * Math.sin(Math.PI * Math.min(u * 3, 1))) * (1 - .45 * u);
+      ph += 2 * Math.PI * f / sr;
+      const src = Math.tanh(4 * Math.sin(ph) + 1.6 * Math.sin(2 * ph + .3)) * .7 + (Math.random() * 2 - 1) * .4;
+      lp += (src - lp) * .3; lp2 += (lp - lp2) * .5;
+      d[i] = (lp - lp2 * .6) * Math.min(1, t / .006) * Math.exp(-t * 13) * (1 + .35 * Math.sin(2 * Math.PI * 60 * t)); } }),
+  whine: synth(.9, (d, sr, n) => { let ph = 0;
+    for (let i = 0; i < n; i++) { const t = i / sr, u = t / .9;
+      ph += 2 * Math.PI * (720 + 520 * Math.sin(Math.PI * u) + 30 * Math.sin(2 * Math.PI * 7 * t)) / sr;
+      d[i] = (Math.sin(ph) + .25 * Math.sin(2 * ph)) * Math.pow(Math.sin(Math.PI * u), .7) * .5; } }),
+  yip: synth(.16, (d, sr, n) => { let ph = 0;
+    for (let i = 0; i < n; i++) { const t = i / sr; ph += 2 * Math.PI * (980 - 1900 * t) / sr;
+      d[i] = Math.tanh(3 * Math.sin(ph)) * Math.min(1, t / .005) * Math.exp(-t * 20); } }),
+  pant: synth(.55, (d, sr, n) => { let lp = 0;
+    for (let i = 0; i < n; i++) { const t = i / sr; lp += ((Math.random() * 2 - 1) - lp) * .18;
+      const e = Math.max(0, Math.sin(2 * Math.PI * t / .275)); d[i] = lp * e * e; } }),
+  sniff: synth(.36, (d, sr, n) => { let lp = 0;
+    for (let i = 0; i < n; i++) { const t = i / sr; const r = Math.random() * 2 - 1; lp += (r - lp) * .6;
+      const k = (t % .12) / .12; d[i] = (r - lp) * (k < .45 ? Math.sin(Math.PI * k / .45) : 0) * .6; } }),
+};
+
+/* ---------- the dog body ---------- */
+const POSES = {
+  stand: { hipY: .46, pitch: 0, fz: 0, hz: 0 },
+  sit:   { hipY: .2, pitch: -.62, fz: -.03, hz: .2 },
+  down:  { hipY: .15, pitch: .02, fz: .4, hz: .13 },
+  sleep: { hipY: .13, pitch: .05, fz: .38, hz: .13 },
+  bow:   { hipY: .43, pitch: .38, fz: .2, hz: 0 },
+};
+
+class Dog {
+  constructor() {
+    this.root = new THREE.Group(); this.meshes = [];
+    const M = (c, r = .85) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
+    const coat = M(0xc98a45), cream = M(0xf3dfbd, .9), earC = M(0x8b5527), black = M(0x141414, .35),
+          white = M(0xffffff, .25), pink = M(0xe07a84, .5), red = M(0xd23b3b, .5), gold = M(0xe8c14a, .3);
+    const add = (parent, geo, mat, pos, rot, scl) => {
+      const m = new THREE.Mesh(geo, mat); if (pos) m.position.set(...pos); if (rot) m.rotation.set(...rot); if (scl) m.scale.set(...scl);
+      m.castShadow = true; parent.add(m); this.meshes.push(m); return m;
+    };
+    // torso: origin at the hips, body extends toward +z (the dog faces +z)
+    this.torso = new THREE.Group(); this.root.add(this.torso);
+    add(this.torso, new THREE.CapsuleGeometry(.13, .34, 6, 16), coat, [0, .02, .2], [Math.PI / 2, 0, 0], [.92, 1, 1]);
+    add(this.torso, new THREE.SphereGeometry(.11, 16, 12), cream, [0, -.045, .24], null, [.85, .6, 1.9]);
+    add(this.torso, new THREE.SphereGeometry(.145, 18, 14), coat, [0, .035, .4]);
+    add(this.torso, new THREE.SphereGeometry(.1, 14, 10), cream, [0, -.02, .49], null, [.9, 1, .6]);
+    add(this.torso, new THREE.SphereGeometry(.13, 16, 12), coat, [0, .03, .02]);
+    // neck + head
+    this.neck = new THREE.Group(); this.neck.position.set(0, .09, .46); this.torso.add(this.neck);
+    add(this.neck, new THREE.CapsuleGeometry(.075, .12, 4, 12), coat, [0, .08, .03], [.4, 0, 0]);
+    add(this.neck, new THREE.TorusGeometry(.077, .014, 8, 24), red, [0, .045, .02], [Math.PI / 2 + .4, 0, 0]);
+    add(this.neck, new THREE.SphereGeometry(.016, 8, 8), gold, [0, -.01, .095]);
+    this.head = new THREE.Group(); this.head.position.set(0, .19, .08); this.neck.add(this.head);
+    add(this.head, new THREE.SphereGeometry(.105, 20, 16), coat, [0, 0, 0], null, [1, .92, 1.05]);
+    add(this.head, new THREE.CapsuleGeometry(.052, .08, 4, 12), cream, [0, -.035, .11], [Math.PI / 2, 0, 0]);
+    add(this.head, new THREE.SphereGeometry(.026, 12, 10), black, [0, -.015, .19], null, [1.25, .85, 1]);
+    this.jaw = new THREE.Group(); this.jaw.position.set(0, -.065, .06); this.head.add(this.jaw);
+    add(this.jaw, new THREE.BoxGeometry(.075, .022, .115), cream, [0, 0, .06]);
+    this.tongue = add(this.jaw, new THREE.BoxGeometry(.05, .008, .1), pink, [0, .012, .075]);
+    this.mouth = new THREE.Object3D(); this.mouth.position.set(0, .0, .12); this.jaw.add(this.mouth);
+    this.eyes = []; this.brows = [];
+    for (const s of [-1, 1]) {
+      const e = new THREE.Group(); e.position.set(s * .048, .03, .085); e.rotation.y = s * .25; this.head.add(e);
+      add(e, new THREE.SphereGeometry(.022, 12, 10), white, null, null, [1, 1, .6]);
+      add(e, new THREE.SphereGeometry(.014, 10, 8), black, [0, 0, .01]);
+      add(e, new THREE.SphereGeometry(.0045, 6, 6), white, [.005, .006, .022]);
+      this.eyes.push(e);
+      this.brows.push({ m: add(this.head, new THREE.BoxGeometry(.034, .007, .012), earC, [s * .046, .062, .088]), s });
+    }
+    this.ears = [];
+    for (const s of [-1, 1]) {
+      const p = new THREE.Group(); p.position.set(s * .075, .065, -.005); this.head.add(p);
+      add(p, new THREE.SphereGeometry(.06, 12, 10), earC, [s * .012, -.06, 0], null, [.32, 1, .72]);
+      this.ears.push({ p, s });
+    }
+    // tail
+    this.tail = []; let parent = this.torso;
+    for (let i = 0; i < 5; i++) {
+      const g = new THREE.Group(); g.position.set(0, i ? 0 : .06, i ? -.055 : -.08); parent.add(g);
+      add(g, new THREE.CapsuleGeometry(.028 - i * .004, .035, 4, 8), coat, [0, 0, -.028], [Math.PI / 2, 0, 0]);
+      this.tail.push(g); parent = g;
+    }
+    // legs, solved with 2-bone IK each frame
+    this.legs = [];
+    const defs = [
+      { a: [.085, -.06, .42], L1: .22, L2: .22, s: 1, off: 0, front: true },
+      { a: [-.085, -.06, .42], L1: .22, L2: .22, s: 1, off: .5, front: true },
+      { a: [.09, -.03, .03], L1: .23, L2: .23, s: -1, off: .5, front: false },
+      { a: [-.09, -.03, .03], L1: .23, L2: .23, s: -1, off: 0, front: false },
+    ];
+    for (const d of defs) {
+      const hip = new THREE.Group(); this.root.add(hip);
+      add(hip, new THREE.CapsuleGeometry(d.front ? .042 : .056, d.L1 - .05, 4, 10), coat, [0, -d.L1 / 2, 0]);
+      const knee = new THREE.Group(); knee.position.y = -d.L1; hip.add(knee);
+      add(knee, new THREE.CapsuleGeometry(.033, d.L2 - .04, 4, 10), coat, [0, -d.L2 / 2, 0]);
+      const paw = new THREE.Group(); paw.position.y = -d.L2; knee.add(paw);
+      add(paw, new THREE.SphereGeometry(.042, 12, 8), cream, [0, .012, .02], null, [1, .6, 1.35]);
+      this.legs.push({ ...d, anchor: new V3(...d.a), hip, knee, paw });
+    }
+    // thought bubble (visible in VR too)
+    this.bubbleCanvas = document.createElement('canvas'); this.bubbleCanvas.width = 512; this.bubbleCanvas.height = 112;
+    this.bubbleTex = new THREE.CanvasTexture(this.bubbleCanvas); this.bubbleTex.colorSpace = THREE.SRGBColorSpace;
+    this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.bubbleTex, transparent: true, depthWrite: false }));
+    this.bubble.scale.set(.6, .13, 1); this.bubble.position.y = 1.0; this.bubble.renderOrder = 10; this.root.add(this.bubble);
+    this.bubbleText = '';
+    // sound emitters
+    this.voices = [0, 1].map(() => { const a = new THREE.PositionalAudio(listener); a.setRefDistance(1.2); this.head.add(a); return a; });
+    this.voiceIdx = 0;
+
+    // motion state
+    this.heading = 0; this.speed = 0; this.turn = 0; this.wantSpeed = 0; this.wantTurn = 0; this.phase = 0;
+    this.p = { ...POSES.stand }; this.pose = 'stand';
+    this.yaw = 0; this.pitchL = 0; this.tilt = 0; this.tiltT = 0;
+    this.wagPh = 0; this.wagAmp = .2; this.wagFreq = 2; this.tailUp = .5; this.perk = .4; this.eyeOpen = 1;
+    this.blinkT = 2; this.blink = 0; this.barkT = 0; this.jumpT = 0; this.sadT = 0;
+    this.look = new V3(0, .5, 2); this._v = new V3(); this._m = new V3();
+
+    // mind
+    this.needs = { energy: .85, social: .55, play: .65, curiosity: .5 };
+    this.mood = { valence: .6, arousal: .45 };
+    this.bond = .35;
+    this.skills = { sit: .55, down: .35, stay: .3, come: .6, drop: .45 };
+    this.tend = { wander: 1, follow: 1, fetch: 1, rest: 1, beg: 1, zoomies: 1 };
+    this.beh = 'idle'; this.bt = 0; this.bs = {}; this.lock = 0; this.selT = 0;
+    this.lastCmd = null; this.lastObeyed = null; this.lastDrop = -99; this.petting = false; this.petTime = 0; this.lookTime = 0;
+    this.thought = '';
+  }
+
+  /* --- sound / expression --- */
+  sfx(name, vol = .8, rate = 1) {
+    if (!arena.visible || actx.state !== 'running') return;
+    const a = this.voices[this.voiceIdx++ % this.voices.length];
+    if (a.isPlaying) a.stop();
+    a.setBuffer(SFX[name]); a.setVolume(vol); a.setPlaybackRate(rate * rand(.94, 1.06)); a.play();
+  }
+  bark(n = 1) { for (let i = 0; i < n; i++) setTimeout(() => { this.barkT = .22; this.sfx('bark', .9, rand(.95, 1.08)); }, i * 330); }
+  headTilt() { this.tiltT = 1.6; this.tiltDir = Math.random() < .5 ? -1 : 1; }
+  setBubble(text) {
+    if (text === this.bubbleText) return; this.bubbleText = text;
+    const c = this.bubbleCanvas, g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
+    if (!text) { this.bubbleTex.needsUpdate = true; return; }
+    g.font = '600 44px system-ui, sans-serif'; const w = Math.min(500, g.measureText(text).width + 44);
+    g.fillStyle = 'rgba(255,255,255,.92)'; g.beginPath(); g.roundRect((c.width - w) / 2, 10, w, 84, 40); g.fill();
+    g.fillStyle = '#20242c'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, c.width / 2, 54, 470);
+    this.bubbleTex.needsUpdate = true;
+  }
+
+  /* --- locomotion primitives (arena space) --- */
+  get pos() { return this.root.position; }
+  moveTo(target, vmax, stop) {
+    const dx = target.x - this.pos.x, dz = target.z - this.pos.z, d = Math.hypot(dx, dz);
+    this.pose = 'stand';
+    if (d <= stop + .04) { this.wantSpeed = 0; this.wantTurn = 0; return true; }
+    const diff = wrap(Math.atan2(dx, dz) - this.heading);
+    this.wantTurn = clamp(diff * 4, -4.5, 4.5);
+    this.wantSpeed = Math.min(vmax, (d - stop) * 1.8 + .15) * clamp(Math.cos(diff), .1, 1);
+    return false;
+  }
+  faceTo(target) {
+    const diff = wrap(Math.atan2(target.x - this.pos.x, target.z - this.pos.z) - this.heading);
+    this.wantTurn = Math.abs(diff) < .12 ? 0 : clamp(diff * 4, -3.5, 3.5);
+    return Math.abs(diff) < .3;
+  }
+  groundAhead(dist, side = 0) {
+    const s = Math.sin(this.heading), c = Math.cos(this.heading);
+    return this._m.set(this.pos.x + s * dist + c * side, 0, this.pos.z + c * dist - s * side);
+  }
+
+  /* --- behaviour AI --- */
+  setBeh(name, lock = 0) {
+    if (this.beh === 'fetch' && name !== 'fetch' && ball.state === 'dog') this.dropBall();
+    if (name !== this.beh) {
+      const L = { idle: 'idles', wander: 'goes sniffing around', follow: 'follows you', fetch: 'goes for the ball', rest: 'heads to bed',
+        beg: 'asks for attention', zoomies: 'gets the zoomies', cmd_sit: 'sits', cmd_down: 'lies down', cmd_stay: 'stays',
+        cmd_come: 'comes to you', speak: 'speaks' };
+      if (name !== 'idle') log(`${NAME} ${L[name] || name}`);
+    }
+    this.beh = name; this.bt = 0; this.bs = {}; this.lock = lock; this.selT = .5;
+  }
+  scores(c) {
+    const n = this.needs, m = this.mood, T = this.tend;
+    const fresh = ball.state === 'free' && (now - ball.thrownAt < 8 || ball.vel.length() > .5);
+    const far = ball.state === 'free' && ball.pos.distanceTo(c.userGround) > 1.6;
+    const s = {
+      idle: .28,
+      wander: n.curiosity * .75 * n.energy * T.wander,
+      follow: (c.dUser > 2.2 ? n.social * .9 + (c.dUser > 4 ? .25 : 0) : n.social * .25) * T.follow + (c.crouch ? .45 : 0),
+      fetch: ball.state === 'user' ? (n.play * .6 + m.arousal * .3) * n.energy * T.fetch * .8
+           : fresh ? (n.play * .9 + m.arousal * .4 + .15) * Math.max(.25, n.energy) * T.fetch
+           : far ? n.play * n.energy * .4 * T.fetch : 0,
+      rest: Math.pow(1 - n.energy, 2) * 1.7 * T.rest,
+      beg: c.dUser < 3.5 && n.social > .6 ? (n.social - .45) * 1.3 * T.beg : 0,
+      zoomies: m.arousal > .72 && n.energy > .4 ? (m.arousal - .55) * 1.6 * T.zoomies : 0,
+    };
+    if (s[this.beh] !== undefined) s[this.beh] += .12;
+    for (const k in s) s[k] += Math.random() * .04;
+    return s;
+  }
+  think(dt, c) {
+    const n = this.needs, m = this.mood;
+    this.bt += dt;
+    // drives
+    const active = this.speed > .1;
+    n.energy = clamp(n.energy - (.004 + this.speed * .011) * dt + (this.pose === 'sleep' ? .06 : this.pose === 'down' ? .02 : 0) * dt, 0, 1);
+    n.social = clamp(n.social + .011 * dt - (c.dUser < 1.6 ? .012 : 0) * dt - (c.looking ? .01 : 0) * dt, 0, 1);
+    n.play = clamp(n.play + .009 * dt, 0, 1);
+    n.curiosity = clamp(n.curiosity + .014 * dt - (this.beh === 'wander' ? .055 : 0) * dt, 0, 1);
+    const arTarget = .25 + .35 * n.play + (c.crouch ? .35 : 0) + clamp(c.userSpeed - .8, 0, 1) * .3 + (ball.state === 'user' ? .25 : 0);
+    m.arousal = clamp(damp(m.arousal, arTarget, .25, dt), 0, 1);
+    m.valence = clamp(damp(m.valence, .5 + .2 * this.bond - .25 * Math.max(0, n.social - .75), .03, dt), 0, 1);
+    if (!active && this.pose !== 'stand') m.arousal = damp(m.arousal, .2, .2, dt);
+
+    // gaze: sustained eye contact is noticed
+    this.lookTime = c.looking ? this.lookTime + dt : 0;
+    if (this.lookTime > 1.4 && !this.noticed) { this.noticed = true; this.perkT = 1.2; n.social = Math.max(0, n.social - .03); if (Math.random() < .35) this.headTilt(); }
+    if (!c.looking) this.noticed = false;
+
+    // petting
+    if (c.pet) {
+      if (!this.petting) { this.petting = true; this.petTime = 0; log(`❤️ ${NAME} loves the pets`);
+        if (this.lastObeyed && now - this.lastObeyed.t < 6) this.praise(true); }
+      this.petTime += dt; n.social = clamp(n.social - .13 * dt, 0, 1); m.valence = clamp(m.valence + .12 * dt, 0, 1);
+      this.bond = clamp(this.bond + .008 * dt, 0, 1); m.arousal = damp(m.arousal, .3, .8, dt);
+    } else this.petting = false;
+
+    // loneliness bark
+    if (n.social > .88 && c.dUser > 3 && !c.looking && Math.random() < .08 * dt && this.pose !== 'sleep') this.bark(2);
+
+    // behaviour selection (utility AI with hysteresis); commands lock it for a while
+    if (this.lock > 0) this.lock -= dt;
+    this.selT -= dt;
+    if (this.lock <= 0 && this.selT <= 0) {
+      this.selT = .4;
+      const s = this.scores(c); let best = this.beh, bv = -1;
+      for (const k in s) if (s[k] > bv) { bv = s[k]; best = k; }
+      if (best !== this.beh) this.setBeh(best);
+    }
+
+    // defaults, then the active behaviour overrides
+    this.wantSpeed = 0; this.wantTurn = 0; this.pose = 'stand'; this.eyeOpen = 1;
+    this.look.copy(c.user.y > 0 && c.dUser < 7 ? c.user : this.groundAhead(2).setY(.5));
+    this.run(dt, c);
+
+    if (c.pet) { this.wantSpeed = 0; this.wantTurn = 0; this.look.copy(c.petPoint); if (this.pose !== 'sleep') this.eyeOpen = .45; }
+
+    // expressive layer
+    const happy = m.valence, ex = m.arousal;
+    this.wagAmp = c.pet ? .9 : this.pose === 'sleep' ? .02 : clamp(.12 + happy * .45 + ex * .35 + (c.looking && c.dUser < 3 ? .2 : 0), 0, 1);
+    this.wagFreq = 1.4 + ex * 4 + (c.pet ? 2 : 0);
+    this.tailUp = this.sadT > 0 ? -.35 : .15 + happy * .55 + ex * .3;
+    this.perk = this.sadT > 0 ? 0 : clamp(.2 + ex * .6 + (this.perkT > 0 ? .5 : 0) + (ball.state === 'user' ? .4 : 0), 0, 1);
+    if (this.perkT > 0) this.perkT -= dt;
+    if (this.sadT > 0) { this.sadT -= dt; this.eyeOpen = Math.min(this.eyeOpen, .7); }
+
+    // bubble
+    this.thought = c.pet ? '❤️ so good…' : this.thought;
+    this.setBubble(this.thought);
+  }
+  run(dt, c) {
+    const b = this.bs, n = this.needs, m = this.mood, roam = mode === 'ar' ? 1.3 : 2.6;
+    switch (this.beh) {
+      case 'idle': {
+        this.thought = n.social > .7 ? '🙂 hi!' : '🙂';
+        if (!b.sit) b.sit = rand(4, 9);
+        if (c.dUser < 3) this.faceTo(c.userGround);
+        if (this.bt > b.sit && n.energy < .75) this.pose = 'sit';
+        if (c.dUser > 7) { b.gT = (b.gT || 0) - dt; if (b.gT <= 0) { b.gT = rand(1.5, 3); b.g = this.groundAhead(2, rand(-2, 2)).clone().setY(.4); } this.look.copy(b.g); }
+        break;
+      }
+      case 'wander': {
+        this.thought = '👃 sniff sniff…';
+        if (!b.target || (b.arrived && b.sniffT <= 0)) {
+          const cx = c.dUser < 6 ? c.userGround.x : 0, cz = c.dUser < 6 ? c.userGround.z : 0, a = rand(0, Math.PI * 2), r = rand(.8, roam);
+          b.target = new V3(cx + Math.cos(a) * r, 0, cz + Math.sin(a) * r);
+          if (b.target.length() > 7) b.target.setLength(7);
+          b.arrived = false;
+        }
+        if (!b.arrived) { if (this.moveTo(b.target, .55, .1)) { b.arrived = true; b.sniffT = rand(1.5, 3); this.sfx('sniff', .35); } this.look.copy(this.groundAhead(.55)); }
+        else { b.sniffT -= dt; this.look.copy(this.groundAhead(.38, Math.sin(this.bt * 2.3) * .12)); }
+        break;
+      }
+      case 'follow': {
+        this.thought = '🐾 coming with you';
+        const stop = c.crouch ? .5 : .85;
+        if (this.moveTo(c.userGround, c.dUser > 3 ? 1.9 : 1.1, stop)) {
+          this.faceTo(c.userGround); b.at = b.at ?? this.bt;
+          if (this.bt - b.at > 2.5 && n.energy < .85) this.pose = 'sit';
+        } else b.at = undefined;
+        break;
+      }
+      case 'fetch': this.runFetch(dt, c); break;
+      case 'rest': {
+        b.phase = b.phase || 'go';
+        if (b.phase === 'go') { this.thought = '🥱 tired…'; if (this.moveTo(BED, .55, .05)) { b.phase = 'settle'; b.sT = 0; } }
+        else if (b.phase === 'settle') { this.thought = '🥱'; this.pose = 'down'; b.sT += dt; this.look.copy(this.groundAhead(1.2).setY(.15)); if (b.sT > 3) b.phase = 'sleep'; }
+        else { this.thought = '💤 zzz'; this.pose = 'sleep'; this.eyeOpen = .05; this.look.copy(this.groundAhead(.8).setY(0));
+          if (n.energy > .95) { log(`${NAME} wakes up refreshed`); this.setBeh('idle'); } }
+        this.lock = b.phase === 'sleep' ? 1 : 0; // keep sleeping unless energy restored or commanded
+        break;
+      }
+      case 'beg': {
+        this.thought = '🥺 pet me?';
+        if (this.moveTo(c.userGround, 1.3, .7)) {
+          this.faceTo(c.userGround); this.pose = 'sit';
+          b.wT = (b.wT ?? 1) - dt; if (b.wT <= 0) { this.sfx('whine', .55); this.headTilt(); b.wT = rand(3.5, 6); }
+        }
+        break;
+      }
+      case 'zoomies': {
+        b.phase = b.phase || 'bow';
+        if (b.phase === 'bow') {
+          this.thought = '🎉 play with me!';
+          if (this.faceTo(c.userGround)) this.pose = 'bow';
+          if (!b.barked && this.bt > .4) { b.barked = true; this.bark(2); }
+          if (this.bt > 1.5) { b.phase = 'run'; b.ang = Math.atan2(this.pos.z - c.userGround.z, this.pos.x - c.userGround.x); b.rT = 0; }
+        } else {
+          this.thought = '💨 zoomies!';
+          const R = mode === 'ar' ? 1.1 : 1.9; b.ang += dt * 2.6 / R; b.rT += dt;
+          this.moveTo(new V3(c.userGround.x + Math.cos(b.ang) * R, 0, c.userGround.z + Math.sin(b.ang) * R), 2.8, 0);
+          if (b.rT > 4.5) { m.arousal -= .35; n.energy -= .06; n.play -= .15; this.setBeh('idle'); }
+        }
+        break;
+      }
+      case 'cmd_sit': this.thought = '🐕 sitting'; if (this.faceTo(c.userGround) || this.bt > .6) this.pose = 'sit'; break;
+      case 'cmd_down': this.thought = '🐕 lying down'; this.faceTo(c.userGround); this.pose = 'down'; break;
+      case 'cmd_stay': {
+        this.thought = '⏳ staying…'; this.pose = 'sit';
+        if (c.dUser > 1.5 && Math.random() < (1 - this.skills.stay) * .06 * (.5 + n.social) * dt) {
+          log(`😣 ${NAME} couldn't hold the stay`); this.lastBroken = now; this.setBeh('follow');
+        }
+        break;
+      }
+      case 'cmd_come': {
+        this.thought = '🐾 coming!';
+        if (this.moveTo(c.userGround, 2.3, .65)) { this.faceTo(c.userGround); this.pose = 'sit'; b.at = b.at ?? this.bt; if (this.bt - b.at > 1.2) this.lock = 0; }
+        break;
+      }
+      case 'speak': this.thought = '🗣 woof!'; if (!b.done) { b.done = true; this.bark(2); } this.faceTo(c.userGround); if (this.bt > .9) this.lock = 0; break;
+    }
+  }
+  runFetch(dt, c) {
+    const b = this.bs, n = this.needs;
+    b.phase = b.phase || 'chase';
+    if (b.phase === 'chase') {
+      if (ball.state === 'user') { // ball in your hand: wait, quivering
+        this.thought = '👀 throw it!'; this.faceTo(c.userGround); this.look.copy(ball.pos);
+        if (c.dUser > 1.6) this.moveTo(c.userGround, 1.2, 1.1);
+        if (Math.random() < .25 * dt) this.pose = 'bow';
+        return;
+      }
+      if (ball.state !== 'free') return;
+      this.thought = '🎾 !!!'; this.look.copy(ball.pos);
+      const dx = ball.pos.x - this.pos.x, dz = ball.pos.z - this.pos.z;
+      this.moveTo(ball.pos, 2.7 * (.5 + .5 * n.energy) + .3, .17);
+      if (Math.hypot(dx, dz) < .34 && ball.pos.y < .3) {
+        ball.state = 'dog'; this.lock = 40; this.sfx('yip', .5);
+        b.phase = Math.random() < (1 - this.skills.drop) * n.play * .7 ? 'keepaway' : 'return';
+        if (b.phase === 'keepaway') { b.kT = 0; b.ang = Math.atan2(this.pos.z - c.userGround.z, this.pos.x - c.userGround.x); log(`😜 ${NAME} plays keep-away`); }
+      }
+    } else if (b.phase === 'keepaway') {
+      this.thought = '😜 catch me!';
+      const R = mode === 'ar' ? 1.1 : 2.2; b.ang += dt * 2.3 / R; b.kT += dt;
+      this.moveTo(new V3(c.userGround.x + Math.cos(b.ang) * R, 0, c.userGround.z + Math.sin(b.ang) * R), 2.3, 0);
+      if (b.kT > 4) b.phase = 'return';
+    } else if (b.phase === 'return') {
+      this.thought = '🎾 got it!';
+      if (this.moveTo(c.userGround, 1.8, .62)) { b.phase = 'present'; b.pT = 0; }
+    } else if (b.phase === 'present') {
+      this.thought = '🎾 here!'; this.faceTo(c.userGround); this.pose = 'sit'; b.pT += dt;
+      if (b.pT > .9) { this.dropBall(); n.play = clamp(n.play - .15, 0, 1); this.mood.arousal = clamp(this.mood.arousal + .1, 0, 1); this.lock = 0; this.setBeh('idle'); }
+    }
+  }
+  dropBall() {
+    if (ball.state !== 'dog') return;
+    ball.state = 'free'; ball.vel.set(Math.sin(this.heading) * .5, .3, Math.cos(this.heading) * .5); ball.thrownAt = -99; this.lastDrop = now;
+  }
+  onBallThrown() {
+    this.mood.arousal = clamp(this.mood.arousal + .25, 0, 1); this.perkT = 1; this.selT = 0;
+    if (this.beh === 'cmd_stay' || this.beh === 'cmd_sit' || this.beh === 'cmd_down') {
+      if (Math.random() < (1 - this.skills.stay) * .75) { log(`🎾 ${NAME} breaks the ${this.beh.slice(4)} for the ball!`); this.lastBroken = now; this.setBeh('fetch'); }
+      else log(`💪 ${NAME} holds the ${this.beh.slice(4)} despite the ball`);
+    }
+    if (Math.random() < this.mood.arousal * .5) this.bark(1);
+  }
+  onBallTaken() { if (this.beh === 'fetch') { this.bs = { phase: 'chase' }; this.lock = 0; } }
+
+  /* --- commands and learning --- */
+  command(cmd) {
+    if (cmd === 'good') return this.praise();
+    if (cmd === 'no') return this.scold();
+    if (cmd === 'drop') {
+      if (ball.state !== 'dog') { this.headTilt(); return; }
+      const p = clamp(this.skills.drop * .8 + this.bond * .2 + .1, .05, .97);
+      if (Math.random() < p) { this.dropBall(); this.lastObeyed = { cmd: 'drop', t: now }; log(`${NAME} drops the ball (p=${pct(p)})`); this.setBeh('idle', 1.5); }
+      else { log(`😜 ${NAME} won't let go (p=${pct(p)})`); this.headTilt(); }
+      return;
+    }
+    const map = { sit: 'cmd_sit', down: 'cmd_down', stay: 'cmd_stay', come: 'cmd_come', speak: 'speak' };
+    const locks = { sit: 7, down: 10, stay: 25, come: 10, speak: 1.2 };
+    if (!map[cmd]) return;
+    const skill = cmd === 'speak' ? .8 : this.skills[cmd];
+    const rep = this.lastCmd && this.lastCmd.cmd === cmd && now - this.lastCmd.t < 5 ? .2 : 0;
+    let p = skill * .7 + this.bond * .25 + .12 + rep - Math.max(0, this.mood.arousal - .6) * .6
+      - (this.needs.energy < .15 && cmd !== 'down' ? .3 : 0) - (ball.state === 'dog' ? .15 : 0) - (this.pose === 'sleep' ? .25 : 0);
+    p = clamp(p, .05, .97);
+    this.lastCmd = { cmd, t: now }; this.perkT = .8;
+    if (Math.random() < p) {
+      if (ball.state === 'dog') this.dropBall();
+      this.setBeh(map[cmd], locks[cmd]); this.lastObeyed = { cmd, t: now };
+      log(`✅ "${cmd}" obeyed (p=${pct(p)})`);
+    } else {
+      log(`🤔 "${cmd}" ignored (p=${pct(p)}); try again`); this.headTilt(); this.thought = '🤔 ?';
+      if (this.mood.arousal > .7) this.bark(1);
+    }
+  }
+  praise(fromPet = false) {
+    const m = this.mood, lo = this.lastObeyed;
+    if (lo && now - lo.t < 6 && this.skills[lo.cmd] !== undefined) {
+      const o = this.skills[lo.cmd]; this.skills[lo.cmd] = o + .12 * (1 - o);
+      log(`🧠 learned "${lo.cmd}": ${pct(o)} → ${pct(this.skills[lo.cmd])}`); this.lastObeyed = null;
+    } else if (!fromPet) {
+      if (this.pose === 'sit' && !this.beh.startsWith('cmd')) { const o = this.skills.sit; this.skills.sit = o + .05 * (1 - o); log(`🧠 sitting earns praise: sit ${pct(o)} → ${pct(this.skills.sit)}`); }
+      else if (this.tend[this.beh] !== undefined) { this.tend[this.beh] = Math.min(1.6, this.tend[this.beh] * 1.1); log(`🧠 "${this.beh}" reinforced (×${this.tend[this.beh].toFixed(2)})`); }
+      if (now - this.lastDrop < 4) { const o = this.skills.drop; this.skills.drop = o + .1 * (1 - o); log(`🧠 dropping the ball pays: ${pct(o)} → ${pct(this.skills.drop)}`); }
+    }
+    m.valence = clamp(m.valence + .2, 0, 1); this.bond = clamp(this.bond + .03, 0, 1);
+    this.needs.social = clamp(this.needs.social - .1, 0, 1); this.sadT = 0;
+    if (!fromPet) { this.sfx('yip', .6); if (this.pose === 'stand' && m.arousal > .45) this.jumpT = .45; }
+  }
+  scold() {
+    const m = this.mood;
+    if (this.beh === 'fetch' && this.bs.phase === 'keepaway') { this.bs.phase = 'return'; const o = this.skills.drop; this.skills.drop = Math.min(.97, o + .04); log(`🧠 keep-away discouraged`); }
+    else if (this.tend[this.beh] !== undefined && this.beh !== 'rest') {
+      this.tend[this.beh] = Math.max(.3, this.tend[this.beh] * .8); log(`🧠 "${this.beh}" discouraged (×${this.tend[this.beh].toFixed(2)})`); this.setBeh('idle', 2);
+    } else if (this.lastBroken && now - this.lastBroken < 6) { log(`🧠 ${NAME} will try harder to stay`); const o = this.skills.stay; this.skills.stay = o + .05 * (1 - o); }
+    m.valence = clamp(m.valence - .15, 0, 1); m.arousal = clamp(m.arousal - .2, 0, 1); this.sadT = 3; this.thought = '😔';
+  }
+
+  /* --- body animation --- */
+  animate(dt, t) {
+    // locomotion integration
+    this.speed = damp(this.speed, this.pose === 'stand' ? this.wantSpeed : 0, 5, dt);
+    this.turn = damp(this.turn, this.wantTurn, 8, dt);
+    this.heading += this.turn * dt;
+    this.pos.x += Math.sin(this.heading) * this.speed * dt;
+    this.pos.z += Math.cos(this.heading) * this.speed * dt;
+    const R = Math.hypot(this.pos.x, this.pos.z); if (R > 8) { this.pos.x *= 8 / R; this.pos.z *= 8 / R; }
+    this.root.rotation.y = this.heading;
+    if (this.jumpT > 0) { this.jumpT -= dt; this.pos.y = Math.sin(Math.PI * clamp(1 - this.jumpT / .45, 0, 1)) * .16; } else this.pos.y = 0;
+
+    // pose blend
+    const P = POSES[this.pose];
+    for (const k in P) this.p[k] = damp(this.p[k], P[k], this.pose === 'stand' ? 6 : 4.5, dt);
+    const eff = this.speed + Math.abs(this.turn) * .12;
+    const f = 1.5 + this.speed * 1.3;
+    if (eff > .03) this.phase = (this.phase + f * dt) % 1;
+    const S = this.speed * .6 / f;
+    const h = .07 * clamp(eff * 2.5, 0, 1) * clamp(1 - Math.abs(this.p.hipY - .46) * 6, 0, 1);
+    const bob = Math.sin(this.phase * Math.PI * 4) * .012 * clamp(this.speed, 0, 1);
+    const breathe = Math.sin(t * (this.pose === 'sleep' ? 1.6 : 3)) * .004;
+    this.torso.position.set(0, this.p.hipY + bob + breathe, -.2);
+    this.torso.rotation.x = this.p.pitch;
+    this.torso.updateMatrix();
+    for (const L of this.legs) {
+      const a = this._v.copy(L.anchor).applyMatrix4(this.torso.matrix);
+      const neutral = L.front ? .22 + this.p.fz : -.17 + this.p.hz;
+      const ph = (this.phase + L.off) % 1; let dz = 0, lift = 0;
+      if (ph < .6) dz = S * (.5 - ph / .6);
+      else { const u = (ph - .6) / .4; dz = S * (-.5 + u * u * (3 - 2 * u)); lift = Math.sin(Math.PI * u) * h; }
+      this.solveLeg(L, a, a.x, .02 + lift, neutral + dz);
+    }
+
+    // head look-at, in dog space
+    const dx = this.look.x - this.pos.x, dz = this.look.z - this.pos.z, hd = this.heading;
+    const lx = dx * Math.cos(hd) - dz * Math.sin(hd), lz = dx * Math.sin(hd) + dz * Math.cos(hd) - .3;
+    const ly = this.look.y - (this.pos.y + this.p.hipY + .28);
+    const tYaw = clamp(Math.atan2(lx, lz), -1.25, 1.25), tPitch = clamp(Math.atan2(ly, Math.hypot(lx, lz)), -.75, .85);
+    this.yaw = damp(this.yaw, tYaw, 6, dt); this.pitchL = damp(this.pitchL, tPitch, 6, dt);
+    const want = -this.pitchL - this.torso.rotation.x;
+    this.neck.rotation.set(.4 * want, this.yaw * .45, 0);
+    if (this.tiltT > 0) this.tiltT -= dt;
+    this.tilt = damp(this.tilt, this.tiltT > 0 ? .38 * this.tiltDir : 0, 7, dt);
+    this.head.rotation.set(.6 * want, this.yaw * .55, this.tilt);
+
+    // tail
+    this.wagPh += dt * this.wagFreq * Math.PI * 2;
+    this.tail.forEach((g, i) => {
+      g.rotation.y = Math.sin(this.wagPh - i * .7) * this.wagAmp * (.45 + i * .25) * .6;
+      g.rotation.x = i === 0 ? this.tailUp : .12;
+    });
+    this._tailUp = damp(this._tailUp ?? .5, this.tailUp, 4, dt); this.tail[0].rotation.x = this._tailUp;
+
+    // ears
+    this._perk = damp(this._perk ?? .4, this.perk, 6, dt);
+    for (const e of this.ears) {
+      e.p.rotation.z = e.s * (.18 + .55 * this._perk) + e.s * Math.sin(t * 15 + e.s) * .07 * clamp(this.speed, 0, 1);
+      e.p.rotation.x = -.25 * this._perk + (this.sadT > 0 ? .5 : 0);
+    }
+    for (const b of this.brows) b.m.rotation.z = b.s * (this.sadT > 0 ? -.35 : this.tiltT > 0 ? .25 : 0);
+
+    // eyes / blink
+    this.blinkT -= dt; if (this.blinkT <= 0) { this.blink = .13; this.blinkT = rand(2, 5.5); }
+    if (this.blink > 0) this.blink -= dt;
+    const open = Math.min(this.eyeOpen, this.blink > 0 ? .1 : 1);
+    this._open = damp(this._open ?? 1, open, 18, dt);
+    for (const e of this.eyes) e.scale.y = Math.max(.06, this._open);
+
+    // mouth: bark, pant, hold ball
+    const pant = this.pose !== 'sleep' && (this.mood.arousal > .62 || this.speed > 1.2 || this.petting);
+    let jaw = .03;
+    if (ball.state === 'dog') jaw = .32;
+    else if (this.barkT > 0) { this.barkT -= dt; jaw = .5; }
+    else if (pant) jaw = .24 + Math.sin(t * 11) * .07;
+    this.jaw.rotation.x = damp(this.jaw.rotation.x, jaw, 20, dt);
+    this.tongue.visible = pant && ball.state !== 'dog' && this.barkT <= 0;
+    this.tongue.position.z = .075 + (pant ? .03 : 0);
+    this.pantT = (this.pantT || 0) - dt;
+    if (pant && this.pantT <= 0) { this.pantT = rand(2.5, 5); this.sfx('pant', .22); }
+
+    this.bubble.position.y = 1.07 + (this.p.hipY - .46) * .5;
+  }
+  solveLeg(L, a, fx, fy, fz) {
+    L.hip.position.copy(a);
+    const dz = fz - a.z, dy = fy - a.y, L1 = L.L1, L2 = L.L2;
+    const d = clamp(Math.hypot(dz, dy), .05, L1 + L2 - 1e-4);
+    const base = Math.atan2(dz, -dy);
+    const alpha = Math.acos(clamp((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d), -1, 1));
+    const bend = Math.PI - Math.acos(clamp((L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2), -1, 1));
+    let s = L.s, p1 = base + s * alpha;
+    if (a.y - L1 * Math.cos(p1) < .03) { s = -s; p1 = base + s * alpha; } // keep the knee above the floor
+    const p2 = p1 - s * bend;
+    L.hip.rotation.x = -p1; L.knee.rotation.x = -(p2 - p1); L.paw.rotation.x = p2;
+  }
+}
+
+/* ---------- ball ---------- */
+const ball = {
+  mesh: new THREE.Mesh(new THREE.SphereGeometry(.04, 20, 14), new THREE.MeshStandardMaterial({ color: 0xcde43a, roughness: .7, emissive: 0x222a00 })),
+  pos: new V3(-.7, .04, .2), vel: new V3(), state: 'free', thrownAt: -99, holder: null, hist: [],
+};
+ball.mesh.castShadow = true; arena.add(ball.mesh);
+const dog = new Dog(); arena.add(dog.root);
+dog.pos.set(0, 0, -1.2);
+
+const tmpA = new V3(), tmpB = new V3(), tmpC = new V3();
+function updateBall(dt) {
+  const r = .04;
+  if (ball.state === 'free') {
+    ball.vel.y -= 9.8 * dt; ball.pos.addScaledVector(ball.vel, dt);
+    if (ball.pos.y < r) {
+      ball.pos.y = r;
+      if (ball.vel.y < -.6) ball.vel.y = -ball.vel.y * .55; else ball.vel.y = 0;
+      const fr = Math.exp(-2.2 * dt); ball.vel.x *= fr; ball.vel.z *= fr;
+    }
+    const R = Math.hypot(ball.pos.x, ball.pos.z), LIM = mode === 'ar' ? 4 : 9;
+    if (R > LIM) { const nx = ball.pos.x / R, nz = ball.pos.z / R; ball.pos.x = nx * LIM; ball.pos.z = nz * LIM;
+      const vn = ball.vel.x * nx + ball.vel.z * nz; if (vn > 0) { ball.vel.x -= 1.6 * vn * nx; ball.vel.z -= 1.6 * vn * nz; } }
+    ball.mesh.rotation.x += ball.vel.z * dt / r; ball.mesh.rotation.z -= ball.vel.x * dt / r;
+  } else if (ball.state === 'dog') {
+    dog.mouth.getWorldPosition(tmpA); ball.pos.copy(arena.worldToLocal(tmpA)); ball.vel.set(0, 0, 0);
+  } else if (ball.state === 'user' && ball.holder) {
+    ball.holder.getWorldPosition(tmpA); ball.pos.copy(arena.worldToLocal(tmpA));
+    ball.hist.push({ p: ball.pos.clone(), t: now }); while (ball.hist.length > 2 && now - ball.hist[0].t > .1) ball.hist.shift();
+  }
+  ball.mesh.position.copy(ball.pos);
+}
+function launch(from, vel) {
+  if (ball.state === 'dog') log(`🎾 you take the ball from ${NAME}`);
+  ball.state = 'free'; ball.holder = null; ball.pos.copy(from); ball.vel.copy(vel); ball.thrownAt = now;
+  dog.onBallThrown();
+}
+function ballisticTo(from, target) {
+  const T = clamp(Math.hypot(target.x - from.x, target.z - from.z) / 6, .45, 1.2);
+  return new V3((target.x - from.x) / T, (target.y - from.y) / T + .5 * 9.8 * T, (target.z - from.z) / T);
+}
+function userEye() { camera.getWorldPosition(tmpA); return arena.worldToLocal(tmpA.clone()); }
+function throwForward() {
+  const eye = userEye(); camera.getWorldDirection(tmpB); tmpB.y = 0; tmpB.normalize();
+  const dist = mode === 'ar' ? rand(1.2, 2.2) : rand(2.5, 4.5);
+  const side = new V3(-tmpB.z, 0, tmpB.x).multiplyScalar(rand(-.8, .8));
+  const target = eye.clone().setY(.04).addScaledVector(tmpB, dist).add(side);
+  const from = eye.clone().addScaledVector(tmpB, .3).setY(eye.y - .25);
+  launch(from, ballisticTo(from, target));
+}
+
+/* ---------- commands (buttons, keys, voice, gamepad) ---------- */
+function doCommand(cmd) {
+  if (cmd === 'throw') return throwForward();
+  dog.command(cmd);
+}
+document.querySelectorAll('[data-cmd]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); unlockAudio(); doCommand(b.dataset.cmd); }));
+$('overlay').addEventListener('beforexrselect', e => e.preventDefault()); // taps on the DOM overlay don't throw in AR
+$('btnHelp').onclick = () => $('help').classList.toggle('show');
+$('btnCloseHelp').onclick = () => $('help').classList.remove('show');
+
+const keys = {};
+addEventListener('keydown', e => {
+  if (e.repeat) return; keys[e.code] = true;
+  const k = { Digit1: 'sit', Digit2: 'down', Digit3: 'stay', Digit4: 'come', KeyF: 'throw', Space: 'throw', KeyR: 'drop', KeyB: 'speak', KeyG: 'good', KeyN: 'no' }[e.code];
+  if (k) { e.preventDefault(); doCommand(k); }
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+
+// voice
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false;
+const VOICE = [
+  [/\b(good|yes|well done|atta|clever|nice)\b/, 'good'], [/\b(no|bad|stop|ah ah)\b/, 'no'], [/\bsit\b/, 'sit'],
+  [/\b(down|lie|lay)\b/, 'down'], [/\b(stay|wait)\b/, 'stay'], [/\b(come|here)\b/, 'come'],
+  [/\b(fetch|ball|throw|catch)\b/, 'throw'], [/\b(drop|give|leave it|let go)\b/, 'drop'], [/\b(speak|bark)\b/, 'speak'],
+];
+function handleSpeech(text) {
+  text = text.toLowerCase().trim(); if (!text) return;
+  log(`🗣 "${text}"`);
+  let best = null, bi = 1e9;
+  for (const [re, cmd] of VOICE) { const m = text.match(re); if (m && m.index < bi) { bi = m.index; best = cmd; } }
+  const named = new RegExp(`\\b${NAME.toLowerCase()}\\b`).test(text);
+  if (named) { dog.perkT = 1.5; dog.needs.social = clamp(dog.needs.social + .05, 0, 1); if (!best) { dog.headTilt(); dog.sfx('yip', .4); } }
+  if (best) doCommand(best); else if (!named) dog.headTilt();
+}
+$('btnMic').onclick = () => {
+  if (!SR) { log('Speech recognition is not supported in this browser'); return; }
+  if (listening) { listening = false; rec && rec.stop(); $('btnMic').classList.remove('on'); return; }
+  rec = new SR(); rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = false;
+  rec.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) handleSpeech(e.results[i][0].transcript); };
+  rec.onerror = e => { log(`🎤 ${e.error === 'not-allowed' ? 'microphone blocked here; host the page on its own HTTPS origin' : e.error}`); if (e.error === 'not-allowed') { listening = false; $('btnMic').classList.remove('on'); } };
+  rec.onend = () => { if (listening) try { rec.start(); } catch {} };
+  try { rec.start(); listening = true; $('btnMic').classList.add('on'); log(`🎤 listening… say "${NAME}, sit"`); } catch (e) { log('🎤 could not start: ' + e.message); }
+};
+
+/* ---------- desktop / touch controls ---------- */
+let yaw = 0, pitch = -.32, drag = null, desktopPet = null;
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function rayAt(x, y) { ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); raycaster.setFromCamera(ndc, camera); return raycaster; }
+function hitDog(rc) { const h = rc.intersectObjects(dog.meshes, false)[0]; return h ? arena.worldToLocal(h.point.clone()) : null; }
+const canvas = renderer.domElement;
+canvas.addEventListener('pointerdown', e => {
+  if (renderer.xr.isPresenting) return;
+  canvas.setPointerCapture(e.pointerId);
+  const p = hitDog(rayAt(e.clientX, e.clientY));
+  drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, pet: !!p };
+  if (p) desktopPet = { point: p, t: now };
+});
+canvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 6) drag.moved = true;
+  if (drag.pet) { const p = hitDog(rayAt(e.clientX, e.clientY)); if (p) desktopPet = { point: p, t: now }; }
+  else { yaw -= dx * .005; pitch = clamp(pitch - dy * .005, -1.3, 1.2); }
+});
+canvas.addEventListener('pointerup', e => {
+  if (!drag) return;
+  if (!drag.moved && !drag.pet) {
+    const rc = rayAt(e.clientX, e.clientY), hit = new V3();
+    const from = userEye(); camera.getWorldDirection(tmpB); from.addScaledVector(tmpB, .3).y -= .25;
+    if (rc.ray.intersectPlane(new THREE.Plane(new V3(0, 1, 0), 0), hit) && hit.distanceTo(camera.position) < 14) launch(from, ballisticTo(from, hit.setY(.04)));
+    else launch(from, rc.ray.direction.clone().multiplyScalar(8).add(new V3(0, 2, 0)));
+  }
+  drag = null;
+});
+addEventListener('resize', () => {
+  if (renderer.xr.isPresenting) return;
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ---------- XR: controllers, hands, hit test ---------- */
+const xrInputs = [];
+const gripGeo = new THREE.BoxGeometry(.04, .03, .11), gripMat = new THREE.MeshStandardMaterial({ color: 0x30343c, roughness: .5 });
+const tipGeo = new THREE.SphereGeometry(.009, 8, 6), tipMat = new THREE.MeshStandardMaterial({ color: 0xf0d2bd, roughness: .7 });
+const TIPS = ['wrist', 'thumb-tip', 'index-finger-tip', 'middle-finger-tip', 'ring-finger-tip', 'pinky-finger-tip', 'middle-finger-metacarpal'];
+for (let i = 0; i < 2; i++) {
+  const ctrl = renderer.xr.getController(i), grip = renderer.xr.getControllerGrip(i), hand = renderer.xr.getHand(i);
+  const gm = new THREE.Mesh(gripGeo, gripMat); gm.castShadow = true; grip.add(gm);
+  scene.add(ctrl, grip, hand);
+  const S = { ctrl, grip, hand, gm, src: null, prev: [], last: new V3(), petPts: [] };
+  ctrl.addEventListener('connected', e => { S.src = e.data; gm.visible = !e.data.hand; });
+  ctrl.addEventListener('disconnected', () => { S.src = null; if (ball.holder && (ball.holder === grip || ball.holder === ctrl)) { ball.state = 'free'; ball.holder = null; } });
+  ctrl.addEventListener('selectstart', () => onSelectStart(S));
+  ctrl.addEventListener('selectend', () => onSelectEnd(S));
+  ctrl.addEventListener('squeezestart', () => doCommand('good'));
+  xrInputs.push(S);
+}
+let placed = true, hitSource = null, arTapPet = 0, arPetPoint = new V3();
+function onSelectStart(S) {
+  if (!S.src) return;
+  if (mode === 'ar' && !placed) { if (reticle.visible) placeDog(); return; }
+  if (S.src.targetRayMode === 'screen') { // phone AR: tap the dog to pet, elsewhere to throw
+    tmpA.setFromMatrixPosition(S.ctrl.matrixWorld); tmpB.set(0, 0, -1).applyQuaternion(S.ctrl.getWorldQuaternion(new THREE.Quaternion()));
+    raycaster.set(tmpA, tmpB);
+    const p = hitDog(raycaster);
+    if (p) { arTapPet = 1.4; arPetPoint.copy(p); return; }
+    const from = arena.worldToLocal(tmpA.clone()); const hit = new V3();
+    const lr = new THREE.Ray(from, tmpB.clone());
+    if (lr.intersectPlane(new THREE.Plane(new V3(0, 1, 0), 0), hit) && hit.distanceTo(from) < 6) launch(from.clone().setY(from.y - .15), ballisticTo(from, hit.setY(.04)));
+    else launch(from, tmpB.clone().multiplyScalar(4).add(new V3(0, 1.5, 0)));
+    return;
+  }
+  // headset: grab the ball into this hand (summons it if it's anywhere free; takes it from the dog)
+  if (ball.state === 'dog') { dog.onBallTaken(); log(`🎾 you take the ball from ${NAME}`); }
+  ball.state = 'user'; ball.holder = S.src.hand ? S.ctrl : S.grip; ball.hist = []; dog.selT = 0;
+}
+function onSelectEnd(S) {
+  if (ball.state !== 'user' || !(ball.holder === S.grip || ball.holder === S.ctrl)) return;
+  const h = ball.hist; let v = new V3();
+  if (h.length > 1) { const a = h[0], b = h[h.length - 1]; if (b.t - a.t > .005) v = b.p.clone().sub(a.p).divideScalar(b.t - a.t).multiplyScalar(1.5); }
+  if (v.length() < .6) { ball.state = 'free'; ball.holder = null; ball.vel.copy(v); ball.thrownAt = -99; return; }
+  launch(ball.pos.clone(), v);
+}
+function pollGamepads() {
+  for (const S of xrInputs) {
+    const gp = S.src && S.src.gamepad; if (!gp) continue;
+    const map = { 4: 'sit', 5: 'come', 3: 'down' };
+    for (const i in map) {
+      const pressed = !!(gp.buttons[i] && gp.buttons[i].pressed);
+      if (pressed && !S.prev[i]) doCommand(map[i]);
+      S.prev[i] = pressed;
+    }
+  }
+}
+function placeDog() {
+  arena.position.setFromMatrixPosition(reticle.matrix);
+  arena.visible = true; placed = true; reticle.visible = false; $('arhint').classList.remove('show');
+  const u = userEye(); dog.pos.set(0, 0, 0); dog.heading = Math.atan2(u.x, u.z);
+  BED.set(-u.x, 0, -u.z).setLength(1.1).applyAxisAngle(new V3(0, 1, 0), .9);
+  arena.children.find(o => o.children.some(c => c.geometry && c.geometry.type === 'TorusGeometry'))?.position.copy(BED);
+  ball.state = 'free'; ball.pos.set(u.x, 0, u.z).setLength(.5).setY(.3); ball.vel.set(0, 0, 0);
+  dog.bark(1); log(`${NAME} is here!`);
+}
+$('btnPlace').onclick = e => { e.stopPropagation(); placed = false; arena.visible = false; $('arhint').classList.add('show'); };
+
+async function startSession(kind) {
+  unlockAudio();
+  try {
+    const opts = kind === 'immersive-ar'
+      ? { requiredFeatures: ['hit-test'], optionalFeatures: ['local-floor', 'dom-overlay', 'hand-tracking'], domOverlay: { root: $('overlay') } }
+      : { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] };
+    const session = await navigator.xr.requestSession(kind, opts);
+    renderer.xr.setReferenceSpaceType('local-floor');
+    await renderer.xr.setSession(session);
+    mode = kind === 'immersive-ar' ? 'ar' : 'vr';
+    if (mode === 'ar') {
+      document.body.classList.add('ar'); scene.background = null; scene.fog = null; world.visible = false; shadowCatcher.visible = true;
+      placed = false; arena.visible = false; $('arhint').classList.add('show');
+      const viewer = await session.requestReferenceSpace('viewer');
+      hitSource = await session.requestHitTestSource({ space: viewer });
+    } else { arena.position.set(0, 0, 0); log('Entered VR: trigger grabs the ball, touch Nova to pet'); }
+    session.addEventListener('end', () => {
+      mode = 'desktop'; hitSource = null; document.body.classList.remove('ar');
+      scene.background = SKY; scene.fog = new THREE.Fog(SKY, 14, 34); world.visible = true; shadowCatcher.visible = false;
+      arena.position.set(0, 0, 0); arena.visible = true; placed = true; reticle.visible = false; $('arhint').classList.remove('show');
+      BED.set(1.7, 0, -2.2); arena.children.find(o => o.children.some(c => c.geometry && c.geometry.type === 'TorusGeometry'))?.position.copy(BED);
+      camera.position.set(0, 1.6, 1.7);
+    });
+  } catch (e) { log(`XR failed: ${e.message}`); }
+}
+async function setupXR() {
+  if (!navigator.xr) { $('btnVR').textContent = 'VR unavailable'; $('btnAR').textContent = 'AR unavailable'; return; }
+  for (const [id, kind, label] of [['btnVR', 'immersive-vr', 'Enter VR'], ['btnAR', 'immersive-ar', 'Enter AR']]) {
+    let ok = false; try { ok = await navigator.xr.isSessionSupported(kind); } catch {}
+    $(id).disabled = !ok; $(id).textContent = ok ? label : label.replace('Enter ', '') + ' unavailable';
+    if (ok) $(id).onclick = () => startSession(kind);
+  }
+}
+setupXR();
+
+/* ---------- perception ---------- */
+const prevUser = new V3(); let userSpeed = 0;
+function perceive(dt) {
+  const user = userEye();
+  const ug = new V3(user.x, 0, user.z);
+  if (mode === 'desktop') { camera.getWorldDirection(tmpC); tmpC.y = 0; if (tmpC.lengthSq() > 1e-4) ug.addScaledVector(tmpC.normalize(), .9); } // keep her in view on a flat screen
+  const dUser = Math.hypot(ug.x - dog.pos.x, ug.z - dog.pos.z);
+  userSpeed = damp(userSpeed, ug.distanceTo(prevUser) / Math.max(dt, 1e-3), 4, dt); prevUser.copy(ug);
+  dog.head.getWorldPosition(tmpB); camera.getWorldPosition(tmpA); camera.getWorldDirection(tmpC);
+  const looking = dUser < 7 && tmpB.sub(tmpA).normalize().dot(tmpC) > .965;
+  const crouch = user.y < 1.05 && dUser < 3.5;
+  // petting: hands / controllers near head or back, mouse rubbing, or AR tap
+  let pet = false; const petPoint = new V3();
+  const head = arena.worldToLocal(dog.head.getWorldPosition(new V3()));
+  const back = arena.worldToLocal(dog.torso.localToWorld(new V3(0, .12, .22)));
+  const touch = p => { if (p.distanceTo(head) < .17 || p.distanceTo(back) < .21) { pet = true; petPoint.copy(p); } };
+  if (renderer.xr.isPresenting) {
+    for (const S of xrInputs) {
+      if (!S.src) continue;
+      if (S.src.hand) {
+        for (const name of TIPS) {
+          const j = S.hand.joints[name]; if (!j) continue;
+          if (!j.userData.vis) { const m = new THREE.Mesh(tipGeo, tipMat); m.castShadow = true; j.add(m); j.userData.vis = true; }
+          if (j.visible) touch(arena.worldToLocal(j.getWorldPosition(new V3())));
+        }
+      } else if (S.src.targetRayMode === 'tracked-pointer') touch(arena.worldToLocal(S.grip.getWorldPosition(new V3())));
+    }
+  }
+  if (desktopPet && now - desktopPet.t < .3 && drag && drag.moved) { pet = true; petPoint.copy(desktopPet.point); }
+  if (arTapPet > 0) { arTapPet -= dt; pet = true; petPoint.copy(arPetPoint); }
+  return { user, userGround: ug, dUser, looking, crouch, userSpeed, pet, petPoint };
+}
+
+/* ---------- HUD ---------- */
+const BARS = [['energy', 'Energy'], ['valence', 'Happiness'], ['social', 'Wants you'], ['play', 'Play drive'], ['bond', 'Bond']];
+$('bars').innerHTML = BARS.map(([k, l]) => `<div class="bar">${l}<i><b id="b_${k}"></b></i></div>`).join('');
+$('skillbars').innerHTML = Object.keys(dog.skills).map(k => `<div class="bar">${k}<i><b id="s_${k}"></b></i></div>`).join('');
+let hudT = 0;
+function hud() {
+  const v = { energy: dog.needs.energy, valence: dog.mood.valence, social: dog.needs.social, play: dog.needs.play, bond: dog.bond };
+  for (const k in v) $('b_' + k).style.width = pct(v[k]);
+  for (const k in dog.skills) $('s_' + k).style.width = pct(dog.skills[k]);
+  $('behav').textContent = dog.beh.replace('cmd_', '') + (dog.bs.phase ? ' · ' + dog.bs.phase : '');
+  $('thought').textContent = dog.bubbleText;
+}
+
+/* ---------- main loop ---------- */
+const clock = new THREE.Clock();
+log(`${NAME} is awake. Throw the ball, pet her, or give a command.`);
+renderer.setAnimationLoop((time, frame) => {
+  const dt = Math.min(clock.getDelta(), .05); now += dt;
+
+  if (!renderer.xr.isPresenting) {
+    const sp = 2.2 * dt, f = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0), s = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+    camera.position.x += (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp;
+    camera.position.z += (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp;
+    const r = Math.hypot(camera.position.x, camera.position.z); if (r > 9) { camera.position.x *= 9 / r; camera.position.z *= 9 / r; }
+    camera.position.y = damp(camera.position.y, keys.KeyC ? .85 : 1.6, 10, dt);
+    camera.rotation.set(pitch, yaw, 0);
+  }
+  if (frame && mode === 'ar' && hitSource && !placed) {
+    const res = frame.getHitTestResults(hitSource);
+    if (res.length) { const pose = res[0].getPose(renderer.xr.getReferenceSpace()); reticle.visible = true; reticle.matrix.fromArray(pose.transform.matrix); }
+    else reticle.visible = false;
+  }
+  if (renderer.xr.isPresenting) pollGamepads();
+
+  if (arena.visible) {
+    const c = perceive(dt);
+    dog.think(dt, c);
+    dog.animate(dt, now);
+  }
+  updateBall(dt);
+
+  dog.root.getWorldPosition(tmpA);
+  sun.position.set(tmpA.x + 2.5, tmpA.y + 6, tmpA.z + 2); sun.target.position.copy(tmpA);
+
+  hudT -= dt; if (hudT <= 0) { hudT = .2; hud(); }
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
